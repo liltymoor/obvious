@@ -68,6 +68,32 @@ class AstDecl(AstExpr):
     def __str__(self) -> str:
         return f"{str(self.var.name)} = {str(self.expr)}"
 
+class AstBlockBody(AstExpr):
+    def __init__(self, ast_list: list[AstExpr]) -> None:
+        self.ast_list = ast_list
+
+    def __str__(self) -> str:
+        result = ""
+        for ast in self.ast_list:
+            result += str(ast) + "\n"
+        return result
+
+class AstIf(AstExpr):
+    def __init__(self, expr: AstExpr, conditional_body: AstBlockBody) -> None:
+        self.expr = expr
+        self.condition_body = conditional_body
+
+    def __str__(self) -> str:
+        return f"if ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
+
+class AstWhile(AstExpr):
+    def __init__(self, expr: AstExpr, conditional_body) -> None:
+        self.expr = expr
+        self.condition_body = conditional_body
+
+    def __str__(self) -> str:
+        return f"while ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
+
 #TODO Insted of this make some hardocded functions like echo and so on
 
 # class AstFuncProto(AstExpr):
@@ -92,6 +118,11 @@ class AstBuilder:
             TokenType.L_PAR: self.parse_paren_lit,
             TokenType.VAR_LIT: self.parse_identifier,
             TokenType.NUM_LIT: self.parse_number_lit,
+        }
+        self.handle2handler = {
+            TokenType.VAR_LIT: self.handle_decl,
+            TokenType.IF: self.handle_if,
+            TokenType.WHILE: self.handle_while,
         }
         self.bin_op_rank = {
             TokenType.LT: 10,
@@ -201,12 +232,59 @@ class AstBuilder:
 
         return decl
 
+    def parse_block(self) -> AstBlockBody | None:
+        instruction_list = []
+        self.next_token() # L_BRACE -> ...
+        while self.current_token.token_type != TokenType.R_BRACE:
+            instruction = self.handle()
+            instruction_list.append(instruction)
+        self.next_token() # } -> ...
+
+        return AstBlockBody(instruction_list)
+
+    def parse_if(self) -> AstIf | None:
+        self.next_token() # IF -> ( | expr)
+        cond_expr = self.parse_paren_lit()
+        if cond_expr.get_expr_type() is not AstExprType.NUM:
+            #TODO Raise error here (expected conditional statement in braces)
+            return None
+
+        block = self.parse_block()
+        return AstIf(cond_expr, block)
+
+    def parse_while(self) -> AstExpr | None:
+        self.next_token() # WHILE -> ( | expr)
+        cond_expr = self.parse_paren_lit()
+        if cond_expr.get_expr_type() is not AstExprType.NUM:
+            #TODO Raise error here (expected conditional statement in braces)
+            return None
+
+        block = self.parse_block()
+        return AstWhile(cond_expr, block)
+
+
     #===-------------------------------------------
     # Handlers
     #===-------------------------------------------
 
-    def handle_decl(self):
-        self.parse_decl()
+    def handle(self) -> AstExpr | None:
+        if self.current_token.token_type == TokenType.EOF:
+            return None
+        if self.current_token.token_type in self.handle2handler.keys():
+            ast_node = self.handle2handler[self.current_token.token_type]()
+            return ast_node
+        else:
+            #TODO Raise error here (unexpected expr)
+            return None
+
+    def handle_decl(self) -> AstDecl | None:
+        return self.parse_decl()
+
+    def handle_if(self) -> AstIf | None:
+        return self.parse_if()
+
+    def handle_while(self) -> AstWhile | None:
+        return self.parse_while()
 
     #===-------------------------------------------
     # Builder
@@ -225,5 +303,10 @@ class AstBuilder:
     def build(self):
         if self.current_token is None:
             self.next_token()
-        self.handle_decl()
+
+        instruction = self.handle()
+        while instruction is not None:
+            print(instruction)
+            instruction = self.handle()
+
 
