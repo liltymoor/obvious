@@ -17,7 +17,10 @@ class AstExpr:
     def __str__(self):
         return "Empty expression"
 
-class AstLitNumber(AstExpr):
+class AstEchoable(AstExpr):
+    pass
+
+class AstLitNumber(AstEchoable):
     def __init__(self, value: int) -> None:
         self.value = value
 
@@ -28,10 +31,28 @@ class AstLitNumber(AstExpr):
     def __str__(self) -> str:
         return f"Number Literal {self.value}"
 
-class AstVar(AstExpr):
-    def __init__(self, name: str, var_type: AstExprType) -> None:
+class AstLitString(AstEchoable):
+    def __init__(self, value: str) -> None:
+        self.value = value
+
+    @staticmethod
+    def get_expr_type() -> AstExprType:
+        return AstExprType.STRING
+
+    def __str__(self) -> str:
+        return f"String Literal \"{self.value}\""
+
+class AstVar(AstEchoable):
+    def __init__(self, name: str, var_type: AstExprType, unique_id: str = None) -> None:
         self.name = name
         self.var_type = var_type
+        # For future ( to make context variables )
+        self.unique_id = unique_id
+
+    def get_unique_id(self) -> str:
+        if self.unique_id is None:
+            return self.name
+        return self.unique_id
 
     def get_expr_type(self) -> AstExprType:
         return self.var_type
@@ -94,6 +115,28 @@ class AstWhile(AstExpr):
     def __str__(self) -> str:
         return f"while ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
 
+# One argument proto
+class AstFuncProto(AstExpr):
+    def __init__(self, argument: AstVar, proto_body: AstBlockBody) -> None:
+        self.argument = argument
+        self.body = proto_body
+
+    def __str__(self) -> str:
+        return f"({self.argument.name}) " + "{\n" + str(self.body) + "}"
+
+class AstInterrupt(AstExpr):
+    def __init__(self, proto: AstFuncProto) -> None:
+        self.proto = proto
+
+    def __str__(self) -> str:
+        return "interrupt" + str(self.proto)
+
+class AstEcho(AstExpr):
+    def __init__(self, expr: AstEchoable) -> None:
+        self.echo_expr = expr
+
+    def __str__(self) -> str:
+        return "echo(" + str(self.echo_expr) + ")"
 #TODO Insted of this make some hardocded functions like echo and so on
 
 # class AstFuncProto(AstExpr):
@@ -118,11 +161,14 @@ class AstBuilder:
             TokenType.L_PAR: self.parse_paren_lit,
             TokenType.VAR_LIT: self.parse_identifier,
             TokenType.NUM_LIT: self.parse_number_lit,
+            TokenType.STR_LIT: self.parse_string_lit,
         }
         self.handle2handler = {
             TokenType.VAR_LIT: self.handle_decl,
             TokenType.IF: self.handle_if,
             TokenType.WHILE: self.handle_while,
+            TokenType.INTERRUPT: self.handle_interrupt,
+            TokenType.ECHO: self.handle_echo,
         }
         self.bin_op_rank = {
             TokenType.LT: 10,
@@ -154,6 +200,12 @@ class AstBuilder:
         print(f"parse_number_lit: {expr}")
         return expr
 
+    def parse_string_lit(self) -> AstLitString:
+        expr = AstLitString(str(self.current_token.value))
+        self.next_token() # string -> ...
+        print(f"parse_string_lit: {expr}")
+        return expr
+
     def parse_paren_lit(self) -> AstExpr | None:
         self.next_token() # L_PAR -> expr
         paren_expr = self.parse_expr() # expr -> R_PAR
@@ -166,11 +218,12 @@ class AstBuilder:
         print(f"parse_paren_lit: {paren_expr}")
         return paren_expr
 
-    def parse_identifier(self) -> AstVar | None:
-        if self.current_token.value not in self.symbol_table:
+    def parse_identifier(self, unique_id: str = "") -> AstVar | None:
+        var_id = unique_id + self.current_token.value
+        if var_id not in self.symbol_table:
             #TODO Raise error here (unresolved var)
             return None
-        var = AstVar(self.current_token.value, self.symbol_table[self.current_token.value])
+        var = AstVar(self.current_token.value, self.symbol_table[var_id], unique_id)
         self.next_token() # VAR_LIT -> ...
         print(f"parse_identifier: {var}: {var.get_expr_type()}")
         return var
@@ -262,6 +315,43 @@ class AstBuilder:
         block = self.parse_block()
         return AstWhile(cond_expr, block)
 
+    def parse_proto(self, seed: str) -> AstFuncProto | None:
+        if self.current_token.token_type != TokenType.L_PAR:
+            #TODO Raise error here (expected handler argument list)
+            return None
+
+        self.next_token()
+        self.symbol_table[self.current_token.value] = AstExprType.STRING #TODO String type ???
+        var = self.parse_identifier()
+        if not isinstance(var, AstVar):
+            #TODO Raise error here (expected a variable name as an argument)
+            return None
+
+        if self.current_token.token_type != TokenType.R_PAR:
+            #TODO Raise error here (expected handler argument list)
+            return None
+        self.next_token()
+
+        proto_body = self.parse_block()
+        return AstFuncProto(var, proto_body)
+
+    def parse_interrupt(self) -> AstInterrupt | None:
+        self.next_token()
+        proto = self.parse_proto("in")
+        if proto is None:
+            #TODO Raise error here (failed while creating handler prototype)
+            return None
+        return AstInterrupt(proto)
+
+    def parse_echo(self) -> AstEcho | None:
+        self.next_token() # ECHO -> ( | expr)
+        var = self.parse_paren_lit()
+        if not isinstance(var, AstEchoable):
+            #TODO Raise error here (expected variable or literal)
+            return None
+
+        return AstEcho(var)
+
 
     #===-------------------------------------------
     # Handlers
@@ -285,6 +375,14 @@ class AstBuilder:
 
     def handle_while(self) -> AstWhile | None:
         return self.parse_while()
+
+    def handle_interrupt(self) -> AstInterrupt | None:
+        #TODO only one interrupt handler can be in code
+        return self.parse_interrupt()
+
+    def handle_echo(self) -> AstEcho | None:
+        return self.parse_echo()
+
 
     #===-------------------------------------------
     # Builder

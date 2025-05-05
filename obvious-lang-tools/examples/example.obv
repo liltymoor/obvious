@@ -1,0 +1,11 @@
+interrupt (idata) {
+    echo(idata)
+}
+
+a = 1 + 5
+s = "obvious" + " is cool"
+if (a == 6) {
+    while (a < 10) {
+        a = a + 1
+    }
+}
