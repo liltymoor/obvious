@@ -3,6 +3,55 @@ from io import TextIOBase
 
 from tokenizer import Tokenizer, Token, TokenType
 
+# ===-------------------------------------------
+# Ast Errors
+# ===-------------------------------------------
+
+class AstError(Exception):
+    def __init__(self, tokenizer, msg):
+        self.tokenizer = tokenizer
+        super().__init__(f"{tokenizer.line} | error: {msg}")
+
+class AstErrorTypeMismatch(AstError):
+    def __init__(self, tokenizer , actual, expected):
+        self.expected = expected
+        self.actual = actual
+        super().__init__(tokenizer, f"Expected {expected} but got {actual} | No valid binary operator for {expected} & {actual}")
+
+class AstErrorUnresolvedVar(AstError):
+    def __init__(self, tokenizer, var_name):
+        self.var_name = var_name
+        super().__init__(tokenizer, f"Unresolved variable {self.var_name}")
+
+class AstErrorUnexpectedToken(AstError):
+    def __init__(self, tokenizer, actual):
+        self.actual = actual
+        super().__init__(tokenizer, f"No known parsers for {self.actual.token_type}")
+
+class AstErrorExpectedToken(AstError):
+    def __init__(self, tokenizer, actual, expected):
+        self.expected = expected
+        self.actual = actual
+        super().__init__(tokenizer, f"Expected {expected} token but got {actual}")
+
+class AstErrorExpectedConditionalExpression(AstError):
+    def __init__(self, tokenizer, actual):
+        self.actual = actual
+        super().__init__(tokenizer, f"Expected conditional expression but got {actual}")
+
+class AstErrorExpectedArgument(AstError):
+    def __init__(self, tokenizer, actual):
+        self.actual = actual
+        super().__init__(tokenizer, f"Expected argument but got {actual}")
+
+class AstErrorCreatingPrototype(AstError):
+    def __init__(self, tokenizer):
+        super().__init__(tokenizer, "Prototype creation failed")
+
+# ===-------------------------------------------
+# Ast Core
+# ===-------------------------------------------
+
 class AstExprType(Enum):
     NUM = 1
     STRING = 2
@@ -61,13 +110,7 @@ class AstVar(AstEchoable):
         return f"Variable {self.name}: {self.var_type.name}"
 
 class AstBinary(AstExpr):
-    # TODO op ???
     def __init__(self, op: Token, left: AstExpr, right: AstExpr) -> None:
-        if left.get_expr_type() != right.get_expr_type():
-            #TODO Raise error here (opearnds type mismatch)
-            print(f"Type mismatch {left.get_expr_type()} != {right.get_expr_type()}")
-            return None
-
         self.left = left
         self.right = right
         self.op = op
@@ -212,8 +255,7 @@ class AstBuilder:
         if paren_expr is None:
             return None
         if self.current_token.token_type != TokenType.R_PAR:
-            #TODO return error here
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token() # R_PAR -> ...
         print(f"parse_paren_lit: {paren_expr}")
         return paren_expr
@@ -221,8 +263,8 @@ class AstBuilder:
     def parse_identifier(self, unique_id: str = "") -> AstVar | None:
         var_id = unique_id + self.current_token.value
         if var_id not in self.symbol_table:
-            #TODO Raise error here (unresolved var)
-            return None
+            raise AstErrorUnresolvedVar(self.tokenizer, var_id)
+
         var = AstVar(self.current_token.value, self.symbol_table[var_id], unique_id)
         self.next_token() # VAR_LIT -> ...
         print(f"parse_identifier: {var}: {var.get_expr_type()}")
@@ -230,8 +272,7 @@ class AstBuilder:
 
     def parse_primary(self) -> AstExpr | None:
         if self.current_token.token_type not in self.token2parser.keys():
-            #TODO Raise error here
-            return None
+            raise AstErrorUnexpectedToken(self.tokenizer, self.current_token)
         token_parser = self.token2parser[self.current_token.token_type]
         expr = token_parser()
         print(f"parse_primary: {expr}")
@@ -258,6 +299,9 @@ class AstBuilder:
                 if rhs is None:
                     return None
 
+            if lhs.get_expr_type() != rhs.get_expr_type():
+                raise AstErrorTypeMismatch(self.tokenizer, lhs.get_expr_type(), rhs.get_expr_type())
+
             lhs = AstBinary(token, lhs, rhs)
 
 
@@ -265,8 +309,7 @@ class AstBuilder:
         lhs = self.parse_primary()
         print(f"parse_expr lhs: {lhs}")
         if lhs is None:
-            #TODO Raise error here
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, "None", "Expression")
         return self.parse_binop_rhs(0, lhs)
 
     def parse_decl(self) -> AstDecl | None:
@@ -274,8 +317,7 @@ class AstBuilder:
         self.next_token() # VAR_LIT -> = (binop)
 
         if self.current_token.token_type != TokenType.ASSIGN:
-            #TODO Raise error here (assign expected)
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.ASSIGN)
 
         self.next_token() # ASSIGN -> expr
         expr = self.parse_expr()
@@ -299,8 +341,7 @@ class AstBuilder:
         self.next_token() # IF -> ( | expr)
         cond_expr = self.parse_paren_lit()
         if cond_expr.get_expr_type() is not AstExprType.NUM:
-            #TODO Raise error here (expected conditional statement in braces)
-            return None
+            raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
 
         block = self.parse_block()
         return AstIf(cond_expr, block)
@@ -309,27 +350,23 @@ class AstBuilder:
         self.next_token() # WHILE -> ( | expr)
         cond_expr = self.parse_paren_lit()
         if cond_expr.get_expr_type() is not AstExprType.NUM:
-            #TODO Raise error here (expected conditional statement in braces)
-            return None
+            raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
 
         block = self.parse_block()
         return AstWhile(cond_expr, block)
 
     def parse_proto(self, seed: str) -> AstFuncProto | None:
         if self.current_token.token_type != TokenType.L_PAR:
-            #TODO Raise error here (expected handler argument list)
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.L_PAR)
 
         self.next_token()
         self.symbol_table[self.current_token.value] = AstExprType.STRING #TODO String type ???
         var = self.parse_identifier()
         if not isinstance(var, AstVar):
-            #TODO Raise error here (expected a variable name as an argument)
-            return None
+            raise AstErrorExpectedArgument(self.tokenizer, var)
 
         if self.current_token.token_type != TokenType.R_PAR:
-            #TODO Raise error here (expected handler argument list)
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token()
 
         proto_body = self.parse_block()
@@ -339,16 +376,14 @@ class AstBuilder:
         self.next_token()
         proto = self.parse_proto("in")
         if proto is None:
-            #TODO Raise error here (failed while creating handler prototype)
-            return None
+            raise AstErrorCreatingPrototype(self.tokenizer)
         return AstInterrupt(proto)
 
     def parse_echo(self) -> AstEcho | None:
         self.next_token() # ECHO -> ( | expr)
         var = self.parse_paren_lit()
         if not isinstance(var, AstEchoable):
-            #TODO Raise error here (expected variable or literal)
-            return None
+            raise AstErrorExpectedToken(self.tokenizer, var.__class__.__name__, AstEchoable.__class__.__name__)
 
         return AstEcho(var)
 
@@ -364,8 +399,7 @@ class AstBuilder:
             ast_node = self.handle2handler[self.current_token.token_type]()
             return ast_node
         else:
-            #TODO Raise error here (unexpected expr)
-            return None
+            raise AstErrorUnexpectedToken(self.tokenizer, self.current_token.token_type)
 
     def handle_decl(self) -> AstDecl | None:
         return self.parse_decl()
