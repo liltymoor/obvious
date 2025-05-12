@@ -2,6 +2,8 @@ from enum import Enum
 from io import TextIOBase
 
 from tokenizer import Tokenizer, Token, TokenType
+from translator import Translator, TranslateError
+from isa import Opcode, Instruction, ArgType
 
 # ===-------------------------------------------
 # Ast Errors
@@ -66,6 +68,9 @@ class AstExpr:
     def __str__(self):
         return "Empty expression"
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        raise NotImplementedError()
+
 class AstEchoable(AstExpr):
     pass
 
@@ -79,6 +84,9 @@ class AstLitNumber(AstEchoable):
 
     def __str__(self) -> str:
         return f"Number Literal {self.value}"
+
+    def translate(self, translator: Translator) -> list[Instruction]:
+        return [Instruction(Opcode.LD, self.value, ArgType.IMMEDIATE)]
 
 class AstLitString(AstEchoable):
     def __init__(self, value: str) -> None:
@@ -121,6 +129,19 @@ class AstBinary(AstExpr):
     def __str__(self) -> str:
         return f"{str(self.left)} {self.op.value} {str(self.right)}"
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = []
+        instructions += self.left.translate(translator)
+
+        tmp_operand_cell = translator.allocate_for_tmp_expr()
+        instructions += Instruction(Opcode.ST, tmp_operand_cell, ArgType.IMMEDIATE)
+        instructions += self.right.translate(translator)
+
+        #TODO implement opreator translation
+
+
+        return instructions
+
 class AstDecl(AstExpr):
     def __init__(self, name: str, expr: AstExpr) -> None:
         self.var = AstVar(name, expr.get_expr_type())
@@ -131,6 +152,12 @@ class AstDecl(AstExpr):
 
     def __str__(self) -> str:
         return f"{str(self.var.name)} = {str(self.expr)}"
+
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = []
+        instructions += self.expr.translate(translator)
+        instructions += Instruction(Opcode.ST, translator.allocate_var(self.var.name), ArgType.IMMEDIATE)
+        return instructions
 
 class AstBlockBody(AstExpr):
     def __init__(self, ast_list: list[AstExpr]) -> None:
