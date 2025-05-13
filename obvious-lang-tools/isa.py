@@ -14,9 +14,9 @@ class Opcode(enum.Enum):
     SUB = enum.auto()
     MUL = enum.auto()
     DIV = enum.auto()
-    REM = enum.auto()
-    NEG = enum.auto()
     MOD = enum.auto()
+
+    NEG = enum.auto()
 
     # bitwise logical operations
     AND = enum.auto()
@@ -77,3 +77,20 @@ class Instruction:
         except Exception as e:
             raise ValueError() from e
         raise ValueError()
+
+
+class BranchMark:
+    def __init__(self) -> None:
+        self.position = None
+
+    def set_position(self, position: int) -> None:
+        self.position = position
+
+
+class MarkedInstruction:
+    def __init__(self, instruction: Instruction, mark: BranchMark) -> None:
+        self.instruction = instruction
+        self.mark = mark
+
+    def __str__(self) -> str:
+        return str(self.instruction) + " | MARKED to " + str(self.mark.position)

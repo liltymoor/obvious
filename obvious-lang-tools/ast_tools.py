@@ -3,7 +3,7 @@ from io import TextIOBase
 
 from tokenizer import Tokenizer, Token, TokenType
 from translator import Translator, TranslateError
-from isa import Opcode, Instruction, ArgType
+from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark
 
 # ===-------------------------------------------
 # Ast Errors
@@ -74,7 +74,10 @@ class AstExpr:
 class AstEchoable(AstExpr):
     pass
 
-class AstLitNumber(AstEchoable):
+class AstLit:
+    pass
+
+class AstLitNumber(AstEchoable, AstLit):
     def __init__(self, value: int) -> None:
         self.value = value
 
@@ -88,7 +91,7 @@ class AstLitNumber(AstEchoable):
     def translate(self, translator: Translator) -> list[Instruction]:
         return [Instruction(Opcode.LD, self.value, ArgType.IMMEDIATE)]
 
-class AstLitString(AstEchoable):
+class AstLitString(AstEchoable, AstLit):
     def __init__(self, value: str) -> None:
         self.value = value
 
@@ -117,7 +120,20 @@ class AstVar(AstEchoable):
     def __str__(self) -> str:
         return f"Variable {self.name}: {self.var_type.name}"
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        instructions.append(Instruction(Opcode.LD, translator.get_var_addr(self.name), ArgType.DIRECT))
+        return instructions
+
 class AstBinary(AstExpr):
+    opertator2opcode = {
+        "+" : Opcode.ADD,
+        "-" : Opcode.SUB,
+        "*" : Opcode.MUL,
+        "/" : Opcode.DIV,
+        "%" : Opcode.MOD,
+    }
+
     def __init__(self, op: Token, left: AstExpr, right: AstExpr) -> None:
         self.left = left
         self.right = right
@@ -129,18 +145,51 @@ class AstBinary(AstExpr):
     def __str__(self) -> str:
         return f"{str(self.left)} {self.op.value} {str(self.right)}"
 
+
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = []
-        instructions += self.left.translate(translator)
 
-        tmp_operand_cell = translator.allocate_for_tmp_expr()
-        instructions += Instruction(Opcode.ST, tmp_operand_cell, ArgType.IMMEDIATE)
+        if isinstance(self.left, AstVar):
+            left = translator.get_var_addr(self.left.name)
+            left_is_direct = True
+        elif isinstance(self.left, AstLit) and isinstance(self.right, AstLit):
+            left = self.left.value
+            left_is_direct = False
+        else:
+            instructions += self.left.translate(translator)
+            left = translator.allocate_for_tmp_expr()
+            instructions.append(Instruction(Opcode.ST, left, ArgType.IMMEDIATE))
+            left_is_direct = True
+
+
         instructions += self.right.translate(translator)
 
-        #TODO implement opreator translation
-
+        if self.op.value in self.opertator2opcode.keys():
+            instructions.append(
+                Instruction(
+                    self.opertator2opcode[self.op.value],
+                    left,
+                    ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE
+                )
+            )
+        elif self.op.token_type == TokenType.GT:
+            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.SETG))
+        elif self.op.token_type == TokenType.LT:
+            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.SETL))
+        elif self.op.token_type == TokenType.EQ:
+            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.SETE))
+        elif self.op.token_type == TokenType.NEQ:
+            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.SETE))
+            instructions.append(Instruction(Opcode.NOT))
+        else:
+            raise AstErrorUnexpectedToken(self.op, self.op.token_type)
 
         return instructions
+
 
 class AstDecl(AstExpr):
     def __init__(self, name: str, expr: AstExpr) -> None:
@@ -154,9 +203,9 @@ class AstDecl(AstExpr):
         return f"{str(self.var.name)} = {str(self.expr)}"
 
     def translate(self, translator: Translator) -> list[Instruction]:
-        instructions = []
+        instructions = list()
         instructions += self.expr.translate(translator)
-        instructions += Instruction(Opcode.ST, translator.allocate_var(self.var.name), ArgType.IMMEDIATE)
+        instructions.append(Instruction(Opcode.ST, translator.allocate_var(self.var.name), ArgType.IMMEDIATE))
         return instructions
 
 class AstBlockBody(AstExpr):
@@ -169,6 +218,12 @@ class AstBlockBody(AstExpr):
             result += str(ast) + "\n"
         return result
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        for ast in self.ast_list:
+            instructions += ast.translate(translator)
+        return instructions
+
 class AstIf(AstExpr):
     def __init__(self, expr: AstExpr, conditional_body: AstBlockBody) -> None:
         self.expr = expr
@@ -177,13 +232,35 @@ class AstIf(AstExpr):
     def __str__(self) -> str:
         return f"if ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
 
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark]:
+        instructions = list()
+        instructions += self.expr.translate(translator)
+        branch_mark = BranchMark()
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), branch_mark))
+        instructions += self.condition_body.translate(translator)
+        instructions.append(branch_mark)
+        return instructions
+
 class AstWhile(AstExpr):
-    def __init__(self, expr: AstExpr, conditional_body) -> None:
+    def __init__(self, expr: AstExpr, conditional_body: AstBlockBody) -> None:
         self.expr = expr
         self.condition_body = conditional_body
 
     def __str__(self) -> str:
         return f"while ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
+
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark]:
+        instructions = list()
+        in_mark = BranchMark()
+        out_mark = BranchMark()
+        instructions.append(in_mark)
+        instructions += self.expr.translate(translator)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), out_mark))
+        instructions += self.condition_body.translate(translator)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), in_mark))
+        instructions.append(out_mark)
+        return instructions
+
 
 # One argument proto
 class AstFuncProto(AstExpr):
@@ -194,6 +271,14 @@ class AstFuncProto(AstExpr):
     def __str__(self) -> str:
         return f"({self.argument.name}) " + "{\n" + str(self.body) + "}"
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        ptr = translator.allocate_var(self.argument.name)
+        instructions.append(Instruction(Opcode.IN, None, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, ptr, ArgType.IMMEDIATE))
+        instructions += self.body.translate(translator)
+        return instructions
+
 class AstInterrupt(AstExpr):
     def __init__(self, proto: AstFuncProto) -> None:
         self.proto = proto
@@ -201,12 +286,24 @@ class AstInterrupt(AstExpr):
     def __str__(self) -> str:
         return "interrupt" + str(self.proto)
 
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        instructions += self.proto.translate(translator)
+        instructions.append(Instruction(Opcode.IRET, None, ArgType.IMMEDIATE))
+        return instructions
+
 class AstEcho(AstExpr):
     def __init__(self, expr: AstEchoable) -> None:
         self.echo_expr = expr
 
     def __str__(self) -> str:
         return "echo(" + str(self.echo_expr) + ")"
+
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        instructions += self.echo_expr.translate(translator)
+        instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
+        return instructions
 #TODO Insted of this make some hardocded functions like echo and so on
 
 # class AstFuncProto(AstExpr):
@@ -463,9 +560,12 @@ class AstBuilder:
         if self.current_token is None:
             self.next_token()
 
+        instructions = list()
+
         instruction = self.handle()
         while instruction is not None:
-            print(instruction)
+            instructions.append(instruction)
             instruction = self.handle()
 
+        return instructions
 

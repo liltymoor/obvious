@@ -1,5 +1,4 @@
 from isa import Instruction, Opcode, ArgType, WORD_SIZE
-from ast import AstExpr
 
 class TranslateError(Exception):
     def __init__(self, message: str) -> None:
@@ -11,13 +10,9 @@ class Translator:
         self.output_port = 0x0000001
         self.input_port = 0x0000010
 
-        self.data_start = 0x2000000
-        self.data_end = 0x2FFFFFF
-        self.free_data = self.data_start
-
-        self.mem_start = 0x3000000
-        self.mem_end = 0x3FFFFFF
-        self.mem_cur = 0x3000000
+        self.mem_start = 0x2000000
+        self.mem_end = 0x2FFFFFF
+        self.mem_cur = self.mem_start
         self.mem_free_list: list[int] = []
 
         self.preload: list[Instruction] = []
@@ -27,15 +22,15 @@ class Translator:
     def allocate_data(self, size: int, val: list[int]) -> int:
         assert size >= len(val)
 
-        if self.free_data + size >= self.data_end:
-            raise TranslateError(message="Data memory exhausted")
+        if self.mem_cur + size >= self.mem_end:
+            raise TranslateError(message="Memory exhausted")
         for i, v in enumerate(val):
             if v < 0 or v >= 2 ** (WORD_SIZE):
                 raise TranslateError(message="Store immediate argument bigger than word")
             self.preload.append(Instruction(Opcode.LD, v, ArgType.IMMEDIATE))
-            self.preload.append(Instruction(Opcode.ST, self.free_data + i, ArgType.IMMEDIATE))
-        res = self.free_data
-        self.free_data += size
+            self.preload.append(Instruction(Opcode.ST, self.mem_cur + i, ArgType.IMMEDIATE))
+        res = self.mem_cur
+        self.mem_cur += size
         return res
 
     def _allocate_prog_mem(self) -> int:
@@ -44,7 +39,7 @@ class Translator:
         if self.mem_cur < self.mem_end:
             self.mem_cur += 1
             return self.mem_cur - 1
-        raise TranslateError(message="Program memory exhausted")
+        raise TranslateError(message="Memory exhausted")
 
     def _free_prog_mem(self, ptr: int) -> None:
         self.mem_free_list.append(ptr)
@@ -62,10 +57,3 @@ class Translator:
 
     def get_var_addr(self, name: str) -> int:
         return self.var_table[name]
-
-    def translate(self, ast_expressions: list[AstExpr]) -> list[Instruction]:
-        instructions: list[Instruction] = []
-        for ast_expr in ast_expressions:
-            instructions += ast_expr.translate(self)
-        return instructions
-
