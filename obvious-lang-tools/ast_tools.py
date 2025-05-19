@@ -99,6 +99,16 @@ class AstLitString(AstEchoable, AstLit):
     def get_expr_type() -> AstExprType:
         return AstExprType.STRING
 
+    @staticmethod
+    def serialize(string: str) -> list[int]:
+        return list(map(ord, string)) + ["\0"]
+
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        serialized_string = self.serialize(self.value)
+        instructions.append(Instruction(Opcode.LD, translator.allocate_data(len(serialized_string), serialized_string), ArgType.IMMEDIATE))
+        return instructions
+
     def __str__(self) -> str:
         return f"String Literal \"{self.value}\""
 
@@ -124,6 +134,9 @@ class AstVar(AstEchoable):
         instructions = list()
         instructions.append(Instruction(Opcode.LD, translator.get_var_addr(self.name), ArgType.DIRECT))
         return instructions
+
+    def get_var_addr(self, translator: Translator) -> int:
+        return translator.get_var_addr(self.name)
 
 class AstBinary(AstExpr):
     opertator2opcode = {
@@ -301,20 +314,98 @@ class AstEcho(AstExpr):
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
+        # если Litstring реализовать другую логику
         instructions += self.echo_expr.translate(translator)
         instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
         return instructions
-#TODO Insted of this make some hardocded functions like echo and so on
 
-# class AstFuncProto(AstExpr):
-#     def __init__(self, name: str, args: list[AstExpr]) -> None:
-#         self.name = name
-#         self.args = args
-#
-# class AstFunc(AstExpr):
-#     def __init__(self, func_proto: AstFuncProto, func_body: AstExpr) -> None:
-#         self.func_proto = func_proto
-#         self.func_body = func_body
+class AstStrCat(AstExpr):
+    def __init__(self, dest: AstExpr, src: AstExpr) -> None:
+        if dest.get_expr_type() != AstExprType.STRING:
+            #TODO Throw error here ( expected string, got smthng instead )
+            return None
+        if isinstance(dest, AstLit):
+            #TODO Throw error here ( dest must be a variable )
+            return None
+        if src.get_expr_type() == AstExprType.STRING:
+            return None
+        self.dest = dest
+        self.src = src
+
+    def __str__(self) -> str:
+        return "strcat(" + str(self.dest) + ", " + str(self.src) + ")"
+
+    def translate(self, translator: Translator) -> list[Instruction]:
+        instructions = list()
+        instructions += self.dest.translate(translator)
+
+        tmp_iterator = translator.allocate_for_tmp_expr()
+        instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.IMMEDIATE))
+
+        check_for_terminator_mark = BranchMark()
+        go_to_copying_from_src_mark = BranchMark()
+
+        instructions.append(check_for_terminator_mark)
+
+        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
+        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.DIRECT))
+        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE)) #TODO?? на единицу ли мы смещаемся или на 4 байта
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), check_for_terminator_mark))
+
+        instructions.append(go_to_copying_from_src_mark)
+
+        # получаем адрев дест идем до терминатора
+        # как ток дошли начинаем записывать значения из src
+        tmp_src_iterator = translator.allocate_for_tmp_expr()
+
+        copying_from_src_mark = BranchMark()
+        src_terminator_reached_mark = BranchMark()
+
+        instructions += self.src.translate(translator)
+        instructions.append(Instruction(Opcode.ST, tmp_src_iterator, ArgType.IMMEDIATE))
+
+        instructions.append(copying_from_src_mark)
+
+        instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.INDIRECT))
+
+        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.DIRECT))
+        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE))  # TODO?? на единицу ли мы смещаемся или на 4 байта
+
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE ), src_terminator_reached_mark))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copying_from_src_mark))
+
+        instructions.append(src_terminator_reached_mark)
+
+        translator.free_tmp_expr(tmp_iterator)
+        translator.free_tmp_expr(tmp_src_iterator)
+        return instructions
+
+
+
+
+
+# ===-------------------------------------------
+# Branch Mark Resolver
+# ===-------------------------------------------
+
+def resolve_marks(instruction_list: list[Instruction | MarkedInstruction | BranchMark]):
+    mark_cnt = 0
+    for pos, i in enumerate(instruction_list):
+        if isinstance(i, BranchMark):
+            i.set_position(pos - mark_cnt)
+            mark_cnt += 1
+
+    res: list[Instruction] = []
+    for r in filter(lambda x: not isinstance(x, BranchMark), instruction_list):
+        if isinstance(r, MarkedInstruction):
+            r.instruction.arg = r.mark.position
+            res.append(r.instruction)
+        if isinstance(r, Instruction):
+            res.append(r)
+
+    return res
 
 # ===-------------------------------------------
 # Ast Builder

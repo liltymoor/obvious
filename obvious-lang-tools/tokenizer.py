@@ -63,6 +63,7 @@ class TokenType(enum.Enum):
     WHILE = ("while",)
 
     ECHO = ("echo",)
+    STRCAT = ("strcat",)
 
     INTERRUPT = ("interrupt",)
 

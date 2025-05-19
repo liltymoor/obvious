@@ -20,6 +20,7 @@ class Translator:
         self.var_table: dict[str, int] = {}
 
     def allocate_data(self, size: int, val: list[int]) -> int:
+
         assert size >= len(val)
 
         if self.mem_cur + size >= self.mem_end:
@@ -51,6 +52,8 @@ class Translator:
         self._free_prog_mem(ptr)
 
     def allocate_var(self, name: str) -> int:
+        if name in self.var_table.keys():
+            return self.get_var_addr(name)
         addr = self._allocate_prog_mem()
         self.var_table[name] = addr
         return addr
