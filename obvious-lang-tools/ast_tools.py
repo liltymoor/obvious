@@ -382,10 +382,6 @@ class AstStrCat(AstExpr):
         translator.free_tmp_expr(tmp_src_iterator)
         return instructions
 
-
-
-
-
 # ===-------------------------------------------
 # Branch Mark Resolver
 # ===-------------------------------------------
@@ -416,7 +412,7 @@ class AstBuilder:
         self.tokenizer = tokenizer
         self.current_token: Token | None = None
         self.token2parser = {
-            TokenType.L_PAR: self.parse_paren_lit,
+            TokenType.L_PAR: lambda: self.parse_paren_lit()[0],
             TokenType.VAR_LIT: self.parse_identifier,
             TokenType.NUM_LIT: self.parse_number_lit,
             TokenType.STR_LIT: self.parse_string_lit,
@@ -427,6 +423,7 @@ class AstBuilder:
             TokenType.WHILE: self.handle_while,
             TokenType.INTERRUPT: self.handle_interrupt,
             TokenType.ECHO: self.handle_echo,
+            TokenType.STRCAT: self.handle_strcat
         }
         self.bin_op_rank = {
             TokenType.LT: 10,
@@ -464,11 +461,16 @@ class AstBuilder:
         print(f"parse_string_lit: {expr}")
         return expr
 
-    def parse_paren_lit(self) -> AstExpr | None:
+    def parse_paren_lit(self) -> list[AstExpr] | None:
         self.next_token() # L_PAR -> expr
-        paren_expr = self.parse_expr() # expr -> R_PAR
+        paren_expr = [self.parse_expr()] # expr -> R_PAR | COMMA
         if paren_expr is None:
             return None
+
+        while self.current_token.token_type == TokenType.COMMA:
+            self.next_token()
+            paren_expr.append(self.parse_expr())
+
         if self.current_token.token_type != TokenType.R_PAR:
             raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token() # R_PAR -> ...
@@ -554,7 +556,7 @@ class AstBuilder:
 
     def parse_if(self) -> AstIf | None:
         self.next_token() # IF -> ( | expr)
-        cond_expr = self.parse_paren_lit()
+        cond_expr = self.parse_paren_lit()[0]
         if cond_expr.get_expr_type() is not AstExprType.NUM:
             raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
 
@@ -563,7 +565,7 @@ class AstBuilder:
 
     def parse_while(self) -> AstExpr | None:
         self.next_token() # WHILE -> ( | expr)
-        cond_expr = self.parse_paren_lit()
+        cond_expr = self.parse_paren_lit()[0]
         if cond_expr.get_expr_type() is not AstExprType.NUM:
             raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
 
@@ -596,12 +598,19 @@ class AstBuilder:
 
     def parse_echo(self) -> AstEcho | None:
         self.next_token() # ECHO -> ( | expr)
-        var = self.parse_paren_lit()
+        var = self.parse_paren_lit()[0]
         if not isinstance(var, AstEchoable):
             raise AstErrorExpectedToken(self.tokenizer, var.__class__.__name__, AstEchoable.__class__.__name__)
 
         return AstEcho(var)
 
+    def parse_strcat(self) -> AstStrCat | None:
+        self.next_token()
+        dest, src = self.parse_paren_lit()
+        if not isinstance(dest, AstVar) and dest.get_expr_type() is not AstExprType.STRING:
+            #TODO Raise error here (destination must be a variable with type string)
+            return None
+        return AstStrCat(dest, src)
 
     #===-------------------------------------------
     # Handlers
@@ -631,6 +640,9 @@ class AstBuilder:
 
     def handle_echo(self) -> AstEcho | None:
         return self.parse_echo()
+
+    def handle_strcat(self) -> AstStrCat | None:
+        return self.parse_strcat()
 
 
     #===-------------------------------------------

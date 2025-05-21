@@ -74,6 +74,7 @@ class TokenType(enum.Enum):
     L_BRACKET = ("[",)
     R_BRACKET = ("]",)
     SEMICOLON = (";",)
+    COMMA = (",",)
 
     NEQ = ("!=",)
     EQ = ("==",)
