@@ -101,7 +101,7 @@ class AstLitString(AstEchoable, AstLit):
 
     @staticmethod
     def serialize(string: str) -> list[int]:
-        return list(map(ord, string)) + ["\0"]
+        return list(map(ord, string)) + [0]
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
@@ -327,7 +327,7 @@ class AstStrCat(AstExpr):
         if isinstance(dest, AstLit):
             #TODO Throw error here ( dest must be a variable )
             return None
-        if src.get_expr_type() == AstExprType.STRING:
+        if src.get_expr_type() != AstExprType.STRING:
             return None
         self.dest = dest
         self.src = src
@@ -416,6 +416,7 @@ class AstBuilder:
             TokenType.VAR_LIT: self.parse_identifier,
             TokenType.NUM_LIT: self.parse_number_lit,
             TokenType.STR_LIT: self.parse_string_lit,
+            TokenType.STRCAT: self.parse_strcat
         }
         self.handle2handler = {
             TokenType.VAR_LIT: self.handle_decl,
