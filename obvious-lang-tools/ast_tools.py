@@ -299,10 +299,15 @@ class AstInterrupt(AstExpr):
     def __str__(self) -> str:
         return "interrupt" + str(self.proto)
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | MarkedInstruction | BranchMark]:
         instructions = list()
+        skip_interrupt_mark = BranchMark()
+
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), skip_interrupt_mark))
         instructions += self.proto.translate(translator)
         instructions.append(Instruction(Opcode.IRET, None, ArgType.IMMEDIATE))
+        instructions.append(skip_interrupt_mark)
+
         return instructions
 
 class AstEcho(AstExpr):
@@ -453,13 +458,13 @@ class AstBuilder:
     def parse_number_lit(self) -> AstLitNumber:
         expr = AstLitNumber(int(self.current_token.value))
         self.next_token() # num -> ...
-        print(f"parse_number_lit: {expr}")
+        # print(f"parse_number_lit: {expr}")
         return expr
 
     def parse_string_lit(self) -> AstLitString:
         expr = AstLitString(str(self.current_token.value))
         self.next_token() # string -> ...
-        print(f"parse_string_lit: {expr}")
+        # print(f"parse_string_lit: {expr}")
         return expr
 
     def parse_paren_lit(self) -> list[AstExpr] | None:
@@ -475,7 +480,7 @@ class AstBuilder:
         if self.current_token.token_type != TokenType.R_PAR:
             raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token() # R_PAR -> ...
-        print(f"parse_paren_lit: {paren_expr}")
+        # print(f"parse_paren_lit: {paren_expr}")
         return paren_expr
 
     def parse_identifier(self, unique_id: str = "") -> AstVar | None:
@@ -485,7 +490,7 @@ class AstBuilder:
 
         var = AstVar(self.current_token.value, self.symbol_table[var_id], unique_id)
         self.next_token() # VAR_LIT -> ...
-        print(f"parse_identifier: {var}: {var.get_expr_type()}")
+        # print(f"parse_identifier: {var}: {var.get_expr_type()}")
         return var
 
     def parse_primary(self) -> AstExpr | None:
@@ -493,7 +498,7 @@ class AstBuilder:
             raise AstErrorUnexpectedToken(self.tokenizer, self.current_token)
         token_parser = self.token2parser[self.current_token.token_type]
         expr = token_parser()
-        print(f"parse_primary: {expr}")
+        # print(f"parse_primary: {expr}")
         return expr
 
     def parse_binop_rhs(self, expr_rank : int, lhs : AstExpr) -> AstBinary | None:
@@ -508,8 +513,8 @@ class AstBuilder:
             if rhs is None:
                 return None
 
-            print(f"current_token: {self.current_token}")
-            print(f"parse_binop_rhs: {lhs} {rhs}")
+            # print(f"current_token: {self.current_token}")
+            # print(f"parse_binop_rhs: {lhs} {rhs}")
 
             next_token_rank = self.get_current_token_rank()
             if current_token_rank < next_token_rank:
@@ -525,7 +530,7 @@ class AstBuilder:
 
     def parse_expr(self) -> AstExpr | None:
         lhs = self.parse_primary()
-        print(f"parse_expr lhs: {lhs}")
+        #print(f"parse_expr lhs: {lhs}")
         if lhs is None:
             raise AstErrorExpectedToken(self.tokenizer, "None", "Expression")
         return self.parse_binop_rhs(0, lhs)
@@ -657,7 +662,7 @@ class AstBuilder:
 
     def next_token(self) -> None:
         self.current_token = self.tokenizer.get_next_token()
-        print(f"next token: {self.current_token}")
+        #print(f"next token: {self.current_token}")
 
     def build(self):
         if self.current_token is None:
@@ -671,4 +676,3 @@ class AstBuilder:
             instruction = self.handle()
 
         return instructions
-

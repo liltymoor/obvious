@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import enum
+import struct
 
 WORD_SIZE = 32
 
@@ -46,25 +47,52 @@ class Opcode(enum.Enum):
 
 
 @enum.unique
-class ArgType(enum.StrEnum):
-    IMMEDIATE = "IMMEDIATE"
-    DIRECT = "DIRECT"
-    INDIRECT = "INDIRECT"
+class ArgType(enum.Enum):
+    IMMEDIATE = 0
+    DIRECT = 1
+    INDIRECT = 2
 
 
 class Instruction:
     def __init__(
-        self, opcode: Opcode, arg: int | None = None, arg_type: ArgType = ArgType.DIRECT, line: int | None = None
-    ) -> None:
+        self, opcode: Opcode, arg: int | None = None, arg_type: ArgType = ArgType.DIRECT) -> None:
         self.opcode = opcode
         self.arg = arg
         self.arg_type = arg_type
-        self.line = line
 
     def __str__(self) -> str:
         return f"{self.opcode.name:<4} " + (
             f"{'[' + self.arg_type.name + ']':<11} {self.arg}" if self.arg is not None else ""
         )
+
+    def get_raw_instruction(self) -> bytes:
+        #B (unsigned char), b (signed char), ? (bool), i (int32)
+        opcode_value = self.opcode.value
+        arg_type_value = self.arg_type.value
+        has_arg = 0 if self.arg is None else 1
+
+        data = struct.pack("BBB", opcode_value, arg_type_value, has_arg)
+
+        if has_arg:
+            data += struct.pack("i", self.arg)
+
+        return data
+
+    @staticmethod
+    def from_raw_instruction(data:bytes, offset:int = 0) -> tuple[Instruction, int]:
+        # returns the actual instruction and new offset
+        opcode_value, arg_type_value, has_arg = struct.unpack_from("BBB", data, offset)
+        offset += 3
+
+        if has_arg:
+            arg = struct.unpack_from("i", data, offset)[0]
+            offset += 4
+            return Instruction(Opcode(opcode_value), arg, ArgType(arg_type_value)), offset
+        else:
+            return Instruction(Opcode(opcode_value), None, ArgType.IMMEDIATE), offset
+
+
+        pass
 
     @staticmethod
     def parse(line: str) -> Instruction:
@@ -77,6 +105,20 @@ class Instruction:
         except Exception as e:
             raise ValueError() from e
         raise ValueError()
+
+    def get_coded(self) -> int:
+        if not (0 <= self.opcode.value < (1 << 5)):
+            raise ValueError("Opcode must fit in 5 bits")
+
+        if not (0 <= self.arg_type.value < (1 << 2)):
+            raise ValueError("ArgType must fit in 2 bits")
+
+        result = (self.opcode.value & 0x1F) << 27  # 5 бит opcode
+        result |= (self.arg_type.value & 0x03) << 25  # 2 бита arg_type
+        if self.arg is not None:
+            result |= (self.arg & 0x1FFFFFF)  # 25 бит аргумента
+
+        return result
 
 
 class BranchMark:
@@ -94,3 +136,6 @@ class MarkedInstruction:
 
     def __str__(self) -> str:
         return str(self.instruction) + " | MARKED to " + str(self.mark.position)
+
+    def get_raw_instruction(self) -> bytes:
+        return self.instruction.get_raw_instruction()

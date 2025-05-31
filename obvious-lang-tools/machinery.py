@@ -90,7 +90,7 @@ class MUX(enum.Enum):
     RAM_R_FROM_AR = enum.auto()
 
 class DataPath:
-    def __init__(self, mem_size: int):
+    def __init__(self, mem_size: int, program: list[Instruction]):
         self.mem_size = mem_size
         self.acc = 0
         self.dr = 0
@@ -104,8 +104,11 @@ class DataPath:
 
         self.left_op = 0
         self.right_op = 0
-
         self.memory = [0] * mem_size
+
+        for k, v in enumerate(program):
+            self.memory[k] = v.get_coded()
+
         self.alu = ALU()
 
     def latch_dr(self, path: MUX) -> None:
@@ -115,10 +118,10 @@ class DataPath:
         self.cr = self.oe(path)
 
     def get_cr_opcode(self):
-        return self.cr & 0xFC000000
+        return (self.cr & 0xFC000000) >> 27
 
     def get_cr_optype(self):
-        return self.cr & 0x03000000
+        return (self.cr & 0x03000000) >> 25
 
     def latch_br(self) -> None:
         self.br = self.pc
@@ -130,6 +133,8 @@ class DataPath:
             self.pc += 1
         if path is MUX.PC_FROM_BR:
             self.pc = self.br
+        if path is MUX.PC_FROM_CR:
+            self.pc = self.cr & 0x01FFFFFF
 
     def latch_ar(self, path: MUX) -> None:
         if path is MUX.AR_FROM_CR:
@@ -173,17 +178,15 @@ class DataPath:
         self.output = self.acc
 
 class ControlUnit:
-    def __init__(self, translated_program: list[Instruction], data_path: DataPath):
-        # must be inserted into mem
-        self.code = translated_program
+    def __init__(self, data_path: DataPath):
         self.dp = data_path
         self.tick = 0
 
-    def instr_fetch(self) -> tuple[int, int]:
+    def instr_fetch(self) -> tuple[Opcode, ArgType]:
         self.dp.latch_cr(MUX.RAM_R_FROM_PC) # CR = RAM[PC]
         self.dp.latch_pc(MUX.PC_INC)
         self.next_tick()
-        return self.dp.get_cr_opcode(), self.dp.get_cr_optype()
+        return Opcode(self.dp.get_cr_opcode()), ArgType(self.dp.get_cr_optype())
 
     def operand_fetch(self, argtype: ArgType):
         if argtype is ArgType.IMMEDIATE:
@@ -257,6 +260,10 @@ class ControlUnit:
                 self.dp.latch_alu_lhs()
                 self.dp.latch_alu_rhs(path)
                 self.dp.alu.compute(opcode, self.dp.left_op, self.dp.right_op)
+            case Opcode.IRET:
+                pass
+            case Opcode.ILOCK:
+                pass
             case Opcode.HALT:
                 raise HaltReached
             case _:
@@ -284,21 +291,18 @@ class ControlUnit:
         if opc not in non_addr_command:
             self.operand_fetch(arg_type)
 
+        print(self.snapshot_cu())
         self.execute(opc, arg_type)
-
 
     def next_tick(self):
         self.tick += 1
 
     def snapshot_cu(self) -> str:
-        return "TICK: {:5} | Command: {:10} | IP {:10} | ACC: {:10} | DR {: 5} | PC: {:3} | AR: {:10}".format(
-            self.tick,
-            self.dp.get_cr_opcode(),
-            self.dp.pc,
-            self.dp.acc,
-            self.dp.dr,
-            self.dp.pc,
-            self.dp.ar,
-        )
+        return (F"TICK: {self.tick:5} |"
+                F" Command: {Opcode(self.dp.get_cr_opcode()):13} |"
+                F" PC {self.dp.pc:4} |"
+                F" ACC: {hex(self.dp.acc):10} |"
+                F" DR {hex(self.dp.dr):10} |"
+                F" AR: {hex(self.dp.ar):10}")
 
 
