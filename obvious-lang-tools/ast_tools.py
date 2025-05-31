@@ -314,7 +314,7 @@ class AstEcho(AstExpr):
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
-        # если Litstring реализовать другую логику
+        #todo если Litstring реализовать другую логику
         instructions += self.echo_expr.translate(translator)
         instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
         return instructions
@@ -644,7 +644,6 @@ class AstBuilder:
 
     def handle_strcat(self) -> AstStrCat | None:
         return self.parse_strcat()
-
 
     #===-------------------------------------------
     # Builder
