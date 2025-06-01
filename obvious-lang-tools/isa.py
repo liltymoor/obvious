@@ -62,7 +62,7 @@ class Instruction:
 
     def __str__(self) -> str:
         return f"{self.opcode.name:<4} " + (
-            f"{'[' + self.arg_type.name + ']':<11} {self.arg}" if self.arg is not None else ""
+            f"{'[' + self.arg_type.name + ']':<11} {hex(self.arg)}" if self.arg is not None else ""
         )
 
     def get_raw_instruction(self) -> bytes:

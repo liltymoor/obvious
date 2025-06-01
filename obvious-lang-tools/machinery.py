@@ -151,6 +151,11 @@ class DataPath:
         if path is MUX.ACC_FROM_ALU:
             self.acc = self.alu.result
             return
+        if path is MUX.ACC_FROM_CR:
+            self.acc = self.cr & 0x01FFFFFF
+            return
+        if path is MUX.ACC_FROM_DR:
+            self.acc = self.dr
 
     def latch_alu_lhs(self) -> None:
         self.left_op = self.acc
@@ -172,7 +177,7 @@ class DataPath:
         return 0
 
     def wr(self) -> None:
-        self.dr = self.memory[self.ar]
+        self.memory[self.ar] = self.acc
 
     def latch_out(self):
         self.output = self.acc
@@ -193,7 +198,8 @@ class ControlUnit:
             #self.dp.latch_alu_rhs(MUX.RHS_FROM_CR) # ALU_RHS = CR[7:32]
             return
         if argtype is ArgType.DIRECT:
-            self.dp.latch_dr(MUX.AR_FROM_CR) # DR = RAM[AR = CR[7:32]]
+            self.dp.latch_ar(MUX.AR_FROM_CR)
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = CR[7:32]]
             #self.dp.latch_alu_rhs(MUX.RHS_FROM_DR) # ALU_RHS = DR
             self.next_tick()
             return
@@ -287,7 +293,6 @@ class ControlUnit:
             Opcode.NEG,
             Opcode.HALT,
         ]
-
         if opc not in non_addr_command:
             self.operand_fetch(arg_type)
 
@@ -300,9 +305,11 @@ class ControlUnit:
     def snapshot_cu(self) -> str:
         return (F"TICK: {self.tick:5} |"
                 F" Command: {Opcode(self.dp.get_cr_opcode()):13} |"
-                F" PC {self.dp.pc:4} |"
+                F" PC: {self.dp.pc:4} |"
+                F" CR: {hex(self.dp.cr):15}"
                 F" ACC: {hex(self.dp.acc):10} |"
-                F" DR {hex(self.dp.dr):10} |"
-                F" AR: {hex(self.dp.ar):10}")
+                F" DR: {hex(self.dp.dr):10} |"
+                F" AR: {hex(self.dp.ar):10}"
+                F" FLAGS: {str(self.dp.alu.get_flags()):4}")
 
 

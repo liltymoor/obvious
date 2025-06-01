@@ -79,8 +79,8 @@ class TokenType(enum.Enum):
     NEQ = ("!=",)
     EQ = ("==",)
     NOT = ("!",)
-    LT = ("<",)
-    GT = (">",)
+    GT = ("<",)
+    LT = (">",)
     AND = ("&",)
     OR = ("|",)
 

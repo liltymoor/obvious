@@ -4,14 +4,13 @@ class TranslateError(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(f"TranslateError occured: {message}")
 
-
 class Translator:
     def __init__(self) -> None:
         self.output_port = 0x0000001
         self.input_port = 0x0000010
 
-        self.mem_start = 0x2000000
-        self.mem_end = 0x2FFFFFF
+        self.mem_start = 0x1000000
+        self.mem_end = 0x2000000
         self.mem_cur = self.mem_start
         self.mem_free_list: list[int] = []
 

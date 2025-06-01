@@ -3,7 +3,7 @@ import sys
 from tokenizer import Tokenizer
 from ast_tools import AstBuilder, AstInterrupt, resolve_marks
 from translator import Translator
-from isa import Instruction
+from isa import Instruction, Opcode, ArgType
 
 # with open(src, 'rb') as binary:
 #     instructions = list()
@@ -32,8 +32,8 @@ def build(src=type[str], target=type[str]):
             instructions += ast_node.translate(translator)
 
         instructions = translator.preload + instructions
-        #todo now marks can point to empty-spaced memory (+1)
         instructions = resolve_marks(interrupt_instructions + instructions)
+        instructions.append(Instruction(Opcode.HALT, None, ArgType.IMMEDIATE))
 
         code = instructions
         for i_num, i in enumerate(code):
