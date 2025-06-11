@@ -121,7 +121,7 @@ class DataPath:
         return (self.cr & 0xFC000000) >> 27
 
     def get_cr_optype(self):
-        return (self.cr & 0x03000000) >> 25
+        return (self.cr & 0x06000000) >> 25
 
     def latch_br(self) -> None:
         self.br = self.pc
@@ -182,16 +182,30 @@ class DataPath:
     def latch_out(self):
         self.output = self.acc
 
+    def snapshot_mem(self, start_addr: int, snap_size: int = 16, decode: str = "hex") -> str:
+        mem_data = []
+        for i in range(snap_size):
+            mem_data.append(self.memory[start_addr + i])
+        if decode == "ascii":
+            mem_data = map(chr, mem_data)
+            return f"{hex(start_addr)}: [{",".join(mem_data)}]"
+        elif decode == "int":
+            return f"{hex(start_addr)}: [{",".join(mem_data)}]"
+        else:
+            mem_data = map(hex, mem_data)
+            return f"{hex(start_addr)}: [{",".join(mem_data)}]"
+
 class ControlUnit:
     def __init__(self, data_path: DataPath):
         self.dp = data_path
         self.tick = 0
 
-    def instr_fetch(self) -> tuple[Opcode, ArgType]:
+    def instr_fetch(self) -> tuple[Opcode, int]:
         self.dp.latch_cr(MUX.RAM_R_FROM_PC) # CR = RAM[PC]
         self.dp.latch_pc(MUX.PC_INC)
         self.next_tick()
-        return Opcode(self.dp.get_cr_opcode()), ArgType(self.dp.get_cr_optype())
+        return Opcode(self.dp.get_cr_opcode()), self.dp.get_cr_optype()
+
 
     def operand_fetch(self, argtype: ArgType):
         if argtype is ArgType.IMMEDIATE:
@@ -204,9 +218,11 @@ class ControlUnit:
             self.next_tick()
             return
         if argtype is ArgType.INDIRECT:
-            self.dp.latch_dr(MUX.RHS_FROM_CR) # DR = RAM[AR = CR[7:32]]
+            self.dp.latch_ar(MUX.AR_FROM_CR)
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = CR[7:32]]
             self.next_tick()
-            self.dp.latch_dr(MUX.RHS_FROM_DR) # DR = RAM[AR = DR]
+            self.dp.latch_ar(MUX.AR_FROM_DR)
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = DR]
             self.next_tick()
             #self.dp.latch_alu_rhs(MUX.RHS_FROM_DR)
             return
@@ -228,6 +244,7 @@ class ControlUnit:
                 else:
                     path = MUX.ACC_FROM_DR
                 self.dp.latch_acc(path)
+                self.dp.alu.set_flags(self.dp.acc)
             case Opcode.ST:
                 if arg_type is ArgType.IMMEDIATE:
                     path = MUX.AR_FROM_CR
@@ -271,6 +288,8 @@ class ControlUnit:
             case Opcode.ILOCK:
                 pass
             case Opcode.HALT:
+                print("Hardcoded Memory Region Snapshot:")
+                print(self.dp.snapshot_mem(0x1000011, decode="ascii", snap_size=13))
                 raise HaltReached
             case _:
                 raise RuntimeError(f"Invalid opcode {opcode}")

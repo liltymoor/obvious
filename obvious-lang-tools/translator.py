@@ -33,6 +33,13 @@ class Translator:
         self.mem_cur += size
         return res
 
+    def allocate_memory(self, size: int) -> int:
+        if self.mem_cur + size >= self.mem_end:
+            raise TranslateError(message="Memory exhausted")
+        res = self.mem_cur
+        self.mem_cur += size
+        return res
+
     def _allocate_prog_mem(self) -> int:
         if self.mem_free_list:
             return self.mem_free_list.pop()

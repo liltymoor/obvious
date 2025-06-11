@@ -117,7 +117,6 @@ class Instruction:
         result |= (self.arg_type.value & 0x03) << 25  # 2 бита arg_type
         if self.arg is not None:
             result |= (self.arg & 0x1FFFFFF)  # 25 бит аргумента
-
         return result
 
 
@@ -139,3 +138,18 @@ class MarkedInstruction:
 
     def get_raw_instruction(self) -> bytes:
         return self.instruction.get_raw_instruction()
+
+def init(ptr: int, arg_type: ArgType, value: int = 0) -> list[Instruction]:
+    instructions = []
+    instructions.append(Instruction(Opcode.LD, value, ArgType.IMMEDIATE))
+    instructions.append(Instruction(Opcode.ST, ptr, arg_type))
+    return instructions
+
+def inc(ptr: int, arg_type: ArgType) -> list[Instruction]:
+    instructions = []
+    instructions.append(Instruction(Opcode.LD, ptr, arg_type))
+    instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE))
+    if arg_type != arg_type.IMMEDIATE:
+        arg_type = ArgType(arg_type.value - 1)
+    instructions.append(Instruction(Opcode.ST, ptr, arg_type))
+    return instructions

@@ -3,7 +3,7 @@ from io import TextIOBase
 
 from tokenizer import Tokenizer, Token, TokenType
 from translator import Translator, TranslateError
-from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark
+from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark, init, inc
 
 # ===-------------------------------------------
 # Ast Errors
@@ -325,7 +325,8 @@ class AstEcho(AstExpr):
         return instructions
 
 class AstStrCat(AstExpr):
-    def __init__(self, dest: AstExpr, src: AstExpr) -> None:
+    # total_size is the result buffer size (with null-term included)
+    def __init__(self, dest: AstExpr, src: AstExpr, total_size: AstExpr) -> None:
         if dest.get_expr_type() != AstExprType.STRING:
             #TODO Throw error here ( expected string, got smthng instead )
             return None
@@ -334,28 +335,51 @@ class AstStrCat(AstExpr):
             return None
         if src.get_expr_type() != AstExprType.STRING:
             return None
+        if not isinstance(total_size, AstLitNumber):
+            #TODO Throw error here (expected size specified by num literal)
+            return None
         self.dest = dest
         self.src = src
+        self.size = total_size
 
     def __str__(self) -> str:
         return "strcat(" + str(self.dest) + ", " + str(self.src) + ")"
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
-        instructions += self.dest.translate(translator)
 
+        instructions += self.dest.translate(translator)
+        # we have src_head in acc
+        # tmp_iterator = src_head
         tmp_iterator = translator.allocate_for_tmp_expr()
         instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.IMMEDIATE))
 
+        # catted_ptr = catted_ptr
+        catted_ptr_head = translator.allocate_memory(self.size.value)
+        tmp_catted_ptr = translator.allocate_for_tmp_expr()
+        instructions += init(tmp_catted_ptr, ArgType.IMMEDIATE, catted_ptr_head)
+
+        # counter = 0
+        tmp_copied_cntr = translator.allocate_for_tmp_expr()
+        instructions += init(tmp_copied_cntr, ArgType.IMMEDIATE)
+
         check_for_terminator_mark = BranchMark()
         go_to_copying_from_src_mark = BranchMark()
+        set_null_term_mark = BranchMark()
 
         instructions.append(check_for_terminator_mark)
-
+        instructions.append(Instruction(Opcode.SETE, None, ArgType.IMMEDIATE))
         instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
         instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
-        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.DIRECT))
-        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE)) #TODO?? на единицу ли мы смещаемся или на 4 байта
+
+        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
+
+        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
+        instructions += inc(tmp_iterator, ArgType.DIRECT)
+        instructions += inc(tmp_copied_cntr, ArgType.DIRECT)
+
+        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), set_null_term_mark))
         instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), check_for_terminator_mark))
 
         instructions.append(go_to_copying_from_src_mark)
@@ -373,18 +397,28 @@ class AstStrCat(AstExpr):
         instructions.append(copying_from_src_mark)
 
         instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.INDIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
 
-        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.DIRECT))
-        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE))  # TODO?? на единицу ли мы смещаемся или на 4 байта
+        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
 
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE ), src_terminator_reached_mark))
+        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
+        instructions += inc(tmp_src_iterator, ArgType.DIRECT)
+        instructions += inc(tmp_copied_cntr, ArgType.DIRECT)
+
+        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), set_null_term_mark))
         instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copying_from_src_mark))
+        instructions.append(set_null_term_mark)
 
-        instructions.append(src_terminator_reached_mark)
+        instructions += init(tmp_catted_ptr, ArgType.DIRECT)
+
+        instructions.append(Instruction(Opcode.LD, catted_ptr_head, ArgType.IMMEDIATE))
 
         translator.free_tmp_expr(tmp_iterator)
         translator.free_tmp_expr(tmp_src_iterator)
+        translator.free_tmp_expr(tmp_catted_ptr)
+        translator.free_tmp_expr(tmp_copied_cntr)
+
         return instructions
 
 # ===-------------------------------------------
@@ -612,11 +646,11 @@ class AstBuilder:
 
     def parse_strcat(self) -> AstStrCat | None:
         self.next_token()
-        dest, src = self.parse_paren_lit()
+        dest, src, size = self.parse_paren_lit()
         if not isinstance(dest, AstVar) and dest.get_expr_type() is not AstExprType.STRING:
             #TODO Raise error here (destination must be a variable with type string)
             return None
-        return AstStrCat(dest, src)
+        return AstStrCat(dest, src, size)
 
     #===-------------------------------------------
     # Handlers
