@@ -14,7 +14,7 @@ def run(target:str):
             instructions.append(i)
     #todo runner
     dp = DataPath(2**25, instructions)
-    cu = ControlUnit(dp)
+    cu = ControlUnit(dp, [(1, 'h'), (10, 'e'), (20, 'l'), (25, 'l'), (103, 'o')])
 
     iter_counter = 0
     while iter_counter <= 2**32:

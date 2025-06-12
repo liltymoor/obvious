@@ -75,7 +75,7 @@ class MUX(enum.Enum):
     AR_FROM_DR = enum.auto()
     AR_FROM_CR = enum.auto()
 
-    PC_ZERO = enum.auto()
+    PC_ONE = enum.auto()
     PC_FROM_BR = enum.auto()
     PC_FROM_CR = enum.auto()
     PC_FROM_DR = enum.auto()
@@ -99,8 +99,8 @@ class DataPath:
         self.br = 0
         self.pc = 0
 
-        self.input = 0
-        self.output = 0
+        self.input = ""
+        self.output = ""
 
         self.left_op = 0
         self.right_op = 0
@@ -127,8 +127,8 @@ class DataPath:
         self.br = self.pc
 
     def latch_pc(self, path: MUX) -> None:
-        if path is MUX.PC_ZERO:
-            self.pc = 0
+        if path is MUX.PC_ONE:
+            self.pc = 1
         if path is MUX.PC_INC:
             self.pc += 1
         if path is MUX.PC_FROM_BR:
@@ -146,7 +146,7 @@ class DataPath:
 
     def latch_acc(self, path: MUX) -> None:
         if path is MUX.ACC_FROM_IN:
-            self.acc = self.input
+            self.acc = ord(self.input)
             return
         if path is MUX.ACC_FROM_ALU:
             self.acc = self.alu.result
@@ -196,9 +196,16 @@ class DataPath:
             return f"{hex(start_addr)}: [{",".join(mem_data)}]"
 
 class ControlUnit:
-    def __init__(self, data_path: DataPath):
+    def __init__(self, data_path: DataPath, in_queue: list[tuple[int, str]]):
         self.dp = data_path
         self.tick = 0
+        self.input = in_queue
+        self.output:list[tuple[int, str]] = []
+        self.interrupted = False
+        self.ilock = False
+
+    def pass_output(self):
+        self.output.append((self.tick, chr(self.dp.output)))
 
     def instr_fetch(self) -> tuple[Opcode, int]:
         self.dp.latch_cr(MUX.RAM_R_FROM_PC) # CR = RAM[PC]
@@ -254,6 +261,7 @@ class ControlUnit:
                 self.dp.wr()
             case Opcode.OUT:
                 self.dp.latch_out()
+                self.pass_output()
             case Opcode.IN:
                 self.dp.latch_acc(MUX.ACC_FROM_IN)
             case Opcode.JNZ | Opcode.JZ | Opcode.JMP:
@@ -284,19 +292,39 @@ class ControlUnit:
                 self.dp.latch_alu_rhs(path)
                 self.dp.alu.compute(opcode, self.dp.left_op, self.dp.right_op)
             case Opcode.IRET:
-                pass
+                self.ilock = False
+                self.interrupted = False
+                self.dp.latch_pc(MUX.PC_FROM_BR)
             case Opcode.ILOCK:
-                pass
+                self.ilock = True
             case Opcode.HALT:
-                print("Hardcoded Memory Region Snapshot:")
-                print(self.dp.snapshot_mem(0x1000011, decode="ascii", snap_size=13))
+                #print("Hardcoded Memory Region Snapshot:")
+                #print(self.dp.snapshot_mem(0x1000011, decode="ascii", snap_size=13))
+                if len(self.output) != 0:
+                    print(self.output)
                 raise HaltReached
             case _:
                 raise RuntimeError(f"Invalid opcode {opcode}")
         self.next_tick()
 
+    def icheck(self):
+        if len(self.input) == 0 or self.ilock:
+            return False
+
+        trigger_tick, input = self.input[0]
+        if trigger_tick <= self.tick:
+            return True
+        return False
+
     def interrupt(self):
-        pass
+        trigger_tick, input = self.input[0]
+        self.input = self.input[1:]
+        self.interrupted = True
+
+        self.dp.input = input
+        self.dp.latch_br()
+
+        self.dp.latch_pc(MUX.PC_ONE)
 
     def run_next(self) -> None:
         opc, opt = self.instr_fetch()
@@ -317,12 +345,14 @@ class ControlUnit:
 
         print(self.snapshot_cu())
         self.execute(opc, arg_type)
+        if self.icheck():
+            self.interrupt()
 
     def next_tick(self):
         self.tick += 1
 
     def snapshot_cu(self) -> str:
-        return (F"TICK: {self.tick:5} |"
+        return (F"TICK{"(I)" if self.interrupted else ""}: {self.tick:8} |"
                 F" Command: {Opcode(self.dp.get_cr_opcode()):13} |"
                 F" PC: {self.dp.pc:4} |"
                 F" CR: {hex(self.dp.cr):15}"

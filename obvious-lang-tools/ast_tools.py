@@ -303,8 +303,14 @@ class AstInterrupt(AstExpr):
         instructions = list()
         skip_interrupt_mark = BranchMark()
 
+        #to main program
         instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), skip_interrupt_mark))
+
+        #interrupt itself - saving acc
+        instructions.append(Instruction(Opcode.ILOCK, None, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, 0x1FFFFFFF, ArgType.IMMEDIATE))
         instructions += self.proto.translate(translator)
+        instructions.append(Instruction(Opcode.LD, 0x1FFFFFFF, ArgType.DIRECT))
         instructions.append(Instruction(Opcode.IRET, None, ArgType.IMMEDIATE))
         instructions.append(skip_interrupt_mark)
 
@@ -319,9 +325,14 @@ class AstEcho(AstExpr):
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
-        #todo если Litstring реализовать другую логику
-        instructions += self.echo_expr.translate(translator)
-        instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
+        # todo если Litstring реализовать другую логику
+        if isinstance(self.echo_expr, AstVar) and self.echo_expr.get_expr_type() is AstExprType.STRING:
+            pass
+        elif isinstance(self.echo_expr, AstLitString):
+            pass
+        else:
+            instructions += self.echo_expr.translate(translator)
+            instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
         return instructions
 
 class AstStrCat(AstExpr):
@@ -368,7 +379,6 @@ class AstStrCat(AstExpr):
         set_null_term_mark = BranchMark()
 
         instructions.append(check_for_terminator_mark)
-        instructions.append(Instruction(Opcode.SETE, None, ArgType.IMMEDIATE))
         instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
         instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
 
