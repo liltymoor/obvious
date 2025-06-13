@@ -1,0 +1,28 @@
+in_source: |-
+  interrupt (idata) {
+      echo(idata)
+  }
+in_stdin: |-
+  [[90, "h"], [120, "e"], [125, "l"], [129, "l"], [140, "o"]]
+out_code_bin: !!binary |
+  ARAAAQkAAAAXAAACAAH///8fFAAAAgABAAAAAQEBAQAAAAEVAAABAQH///8fFgAAEwAA
+out_code_hex: |
+  0x0  - 0x80000009  - JMP   0x24       | [IMMEDIATE]
+  0x4  - 0xb8000000  - ILOCK            | [IMMEDIATE]
+  0x8  - 0x11ffffff  - ST    0x7ffffffc | [IMMEDIATE]
+  0xc  - 0xa0000000  - IN               | [IMMEDIATE]
+  0x10 - 0x11000000  - ST    0x4000000  | [IMMEDIATE]
+  0x14 - 0xb000000   - LD    0x4000000  | [DIRECT]
+  0x18 - 0xa8000000  - OUT              | [IMMEDIATE]
+  0x1c - 0xbffffff   - LD    0x7ffffffc | [DIRECT]
+  0x20 - 0xb0000000  - IRET             | [IMMEDIATE]
+  0x24 - 0x98000000  - HALT             | [IMMEDIATE]
+out_stdout: |
+  LoC: 2
+  Instructions: 10
+  ============================================================
+  Total ticks: 3
+out_log: |-
+  TICK:        1 | Command: Opcode.JMP    | PC:    1 | CR: 0x80000009      ACC: 0x0        | DR: 0x0        | AR: 0x0        FLAGS: (False, True)
+  TICK:        3 | Command: Opcode.HALT   | PC:   10 | CR: 0x98000000      ACC: 0x0        | DR: 0x0        | AR: 0x0        FLAGS: (False, True)
+  Output format (TICK, DECODED TO INT OUT)

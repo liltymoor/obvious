@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import enum
+from collections.abc import Callable
 from functools import partial
 from io import SEEK_SET, TextIOBase
-from typing import Callable
 
+
+class TokenParseError(Exception):
+    def __init__(self) -> None:
+        super().__init__("Failed while parsing token")
 
 def parse_keyword(keyword: str, text: TextIOBase) -> str:
     s = text.read(len(keyword))
@@ -121,7 +125,7 @@ class Tokenizer:
         self.text = text
         self.stack: list[Token] = []
         self.line = 0
-    def get_next_token(self) -> Token | None:
+    def get_next_token(self) -> Token:
         if self.stack:
             return self.stack.pop()
 
@@ -142,4 +146,4 @@ class Tokenizer:
         if cur == "":
             return Token(TokenType.EOF, "", self.line)
         self.text.seek(pos, SEEK_SET)
-        return None
+        raise TokenParseError

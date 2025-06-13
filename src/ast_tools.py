@@ -1,9 +1,10 @@
+from collections.abc import Callable
 from enum import Enum
-from io import TextIOBase
+from typing import ClassVar
 
-from tokenizer import Tokenizer, Token, TokenType
-from translator import Translator, TranslateError
-from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark, init, inc, dec
+from isa import ArgType, BranchMark, Instruction, MarkedInstruction, Opcode, dec, inc, init
+from tokenizer import Token, Tokenizer, TokenType
+from translator import Translator
 
 # ===-------------------------------------------
 # Ast Errors
@@ -14,39 +15,39 @@ class AstError(Exception):
         self.tokenizer = tokenizer
         super().__init__(f"{tokenizer.line} | error: {msg}")
 
-class AstErrorTypeMismatch(AstError):
+class AstTypeMismatchError(AstError):
     def __init__(self, tokenizer , actual, expected):
         self.expected = expected
         self.actual = actual
         super().__init__(tokenizer, f"Expected {expected} but got {actual} | No valid binary operator for {expected} & {actual}")
 
-class AstErrorUnresolvedVar(AstError):
+class AstUnresolvedVarError(AstError):
     def __init__(self, tokenizer, var_name):
         self.var_name = var_name
         super().__init__(tokenizer, f"Unresolved variable {self.var_name}")
 
-class AstErrorUnexpectedToken(AstError):
+class AstUnexpectedTokenError(AstError):
     def __init__(self, tokenizer, actual):
         self.actual = actual
         super().__init__(tokenizer, f"No known parsers for {self.actual.token_type}")
 
-class AstErrorExpectedToken(AstError):
+class AstExpectedTokenError(AstError):
     def __init__(self, tokenizer, actual, expected):
         self.expected = expected
         self.actual = actual
         super().__init__(tokenizer, f"Expected {expected} token but got {actual}")
 
-class AstErrorExpectedConditionalExpression(AstError):
+class AstExpectedConditionalExpressionError(AstError):
     def __init__(self, tokenizer, actual):
         self.actual = actual
         super().__init__(tokenizer, f"Expected conditional expression but got {actual}")
 
-class AstErrorExpectedArgument(AstError):
+class AstExpectedArgumentError(AstError):
     def __init__(self, tokenizer, actual):
         self.actual = actual
         super().__init__(tokenizer, f"Expected argument but got {actual}")
 
-class AstErrorCreatingPrototype(AstError):
+class AstCreatingPrototypeError(AstError):
     def __init__(self, tokenizer):
         super().__init__(tokenizer, "Prototype creation failed")
 
@@ -61,59 +62,57 @@ class AstExprType(Enum):
     NONE = 4
 
 class AstExpr:
-    @staticmethod
-    def get_expr_type():
+    def get_expr_type(self) -> AstExprType:
         return AstExprType.NONE
 
     def __str__(self):
         return "Empty expression"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         raise NotImplementedError()
 
 class AstEchoable(AstExpr):
     pass
 
 class AstLit:
-    pass
+    def __init__(self, value) -> None:
+        self.value = value
 
 class AstLitNumber(AstEchoable, AstLit):
     def __init__(self, value: int) -> None:
-        self.value = value
+        super().__init__(value)
 
-    @staticmethod
-    def get_expr_type() -> AstExprType:
+    def get_expr_type(self) -> AstExprType:
         return AstExprType.NUM
 
     def __str__(self) -> str:
         return f"Number Literal {self.value}"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         return [Instruction(Opcode.LD, self.value, ArgType.IMMEDIATE)]
 
 class AstLitString(AstEchoable, AstLit):
     def __init__(self, value: str) -> None:
-        self.value = value
+        super().__init__(value)
 
-    @staticmethod
-    def get_expr_type() -> AstExprType:
+    def get_expr_type(self) -> AstExprType:
         return AstExprType.STRING
 
     @staticmethod
     def serialize(string: str) -> list[int]:
-        return [len(string)] + list(map(ord, string))
+        return [len(string), *list(map(ord, string))]
 
-    def translate(self, translator: Translator) -> list[Instruction]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         serialized_string = self.serialize(self.value)
         instructions.append(Instruction(Opcode.LD, translator.allocate_data(len(serialized_string), serialized_string), ArgType.IMMEDIATE))
         return instructions
 
     def __str__(self) -> str:
-        return f"String Literal \"{self.value}\""
+        return f'String Literal "{self.value}"'
 
 class AstVar(AstEchoable):
-    def __init__(self, name: str, var_type: AstExprType, unique_id: str = None) -> None:
+    def __init__(self, name: str, var_type: AstExprType, unique_id: str | None = None) -> None:
         self.name = name
         self.var_type = var_type
         # For future ( to make context variables )
@@ -130,8 +129,8 @@ class AstVar(AstEchoable):
     def __str__(self) -> str:
         return f"Variable {self.name}: {self.var_type.name}"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         instructions.append(Instruction(Opcode.LD, translator.get_var_addr(self.name), ArgType.DIRECT))
         return instructions
 
@@ -139,7 +138,7 @@ class AstVar(AstEchoable):
         return translator.get_var_addr(self.name)
 
 class AstBinary(AstExpr):
-    opertator2opcode = {
+    opertator2opcode: ClassVar[dict] = {
         "+" : Opcode.ADD,
         "-" : Opcode.SUB,
         "*" : Opcode.MUL,
@@ -158,9 +157,9 @@ class AstBinary(AstExpr):
         return self.left.get_expr_type()
 
     def __str__(self) -> str:
-        return f"{str(self.left)} {self.op.value} {str(self.right)}"
+        return f"{self.left!s} {self.op.value} {self.right!s}"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         instructions = []
 
         if isinstance(self.right, AstVar):
@@ -199,7 +198,7 @@ class AstBinary(AstExpr):
             instructions.append(Instruction(Opcode.SETE))
             instructions.append(Instruction(Opcode.NOT))
         else:
-            raise AstErrorUnexpectedToken(self.op, self.op.token_type)
+            raise AstUnexpectedTokenError(self.op, self.op.token_type)
 
         return instructions
 
@@ -213,10 +212,10 @@ class AstDecl(AstExpr):
         return self.var.get_expr_type()
 
     def __str__(self) -> str:
-        return f"{str(self.var.name)} = {str(self.expr)}"
+        return f"{self.var.name!s} = {self.expr!s}"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         instructions += self.expr.translate(translator)
         instructions.append(Instruction(Opcode.ST, translator.allocate_var(self.var.name), ArgType.IMMEDIATE))
         return instructions
@@ -231,7 +230,7 @@ class AstBlockBody(AstExpr):
             result += str(ast) + "\n"
         return result
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         instructions = list()
         for ast in self.ast_list:
             instructions += ast.translate(translator)
@@ -243,10 +242,10 @@ class AstIf(AstExpr):
         self.condition_body = conditional_body
 
     def __str__(self) -> str:
-        return f"if ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
+        return f"if ({self.expr!s})" + " {\n" + str(self.condition_body) + "}"
 
-    def translate(self, translator: Translator) -> list[Instruction | BranchMark]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         instructions += self.expr.translate(translator)
         branch_mark = BranchMark()
         instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), branch_mark))
@@ -260,10 +259,10 @@ class AstWhile(AstExpr):
         self.condition_body = conditional_body
 
     def __str__(self) -> str:
-        return f"while ({str(self.expr)})" + " {\n" + str(self.condition_body) + "}"
+        return f"while ({self.expr!s})" + " {\n" + str(self.condition_body) + "}"
 
-    def translate(self, translator: Translator) -> list[Instruction | BranchMark]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         in_mark = BranchMark()
         out_mark = BranchMark()
         instructions.append(in_mark)
@@ -284,8 +283,8 @@ class AstFuncProto(AstExpr):
     def __str__(self) -> str:
         return f"({self.argument.name}) " + "{\n" + str(self.body) + "}"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
-        instructions = list()
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         ptr = translator.allocate_var(self.argument.name)
         instructions.append(Instruction(Opcode.IN, None, ArgType.IMMEDIATE))
         instructions.append(Instruction(Opcode.ST, ptr, ArgType.IMMEDIATE))
@@ -300,7 +299,7 @@ class AstInterrupt(AstExpr):
         return "interrupt" + str(self.proto)
 
     def translate(self, translator: Translator) -> list[Instruction | MarkedInstruction | BranchMark]:
-        instructions = list()
+        instructions:list[Instruction | BranchMark | MarkedInstruction] = list()
         skip_interrupt_mark = BranchMark()
 
         #to main program
@@ -323,7 +322,7 @@ class AstEcho(AstExpr):
     def __str__(self) -> str:
         return "echo(" + str(self.echo_expr) + ")"
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         instructions = list()
         if self.echo_expr.get_expr_type() is AstExprType.STRING:
             tmp_iterator_ptr = translator.allocate_for_tmp_expr()
@@ -364,15 +363,15 @@ class AstStrCat(AstEchoable):
     def __init__(self, dest: AstExpr, src: AstExpr, total_size: AstExpr) -> None:
         if dest.get_expr_type() != AstExprType.STRING:
             #TODO Throw error here ( expected string, got smthng instead )
-            return None
+            return
         if isinstance(dest, AstLit):
             #TODO Throw error here ( dest must be a variable )
-            return None
+            return
         if src.get_expr_type() != AstExprType.STRING:
-            return None
+            return
         if not isinstance(total_size, AstLitNumber):
             #TODO Throw error here (expected size specified by num literal)
-            return None
+            return
         self.dest = dest
         self.src = src
         self.size = total_size
@@ -383,7 +382,7 @@ class AstStrCat(AstEchoable):
     def get_expr_type(self) -> AstExprType:
         return AstExprType.STRING
 
-    def translate(self, translator: Translator) -> list[Instruction]:
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
         instructions = list()
 
         instructions += self.dest.translate(translator)
@@ -508,8 +507,8 @@ def resolve_marks(instruction_list: list[Instruction | MarkedInstruction | Branc
 class AstBuilder:
     def __init__(self, tokenizer : Tokenizer) -> None:
         self.tokenizer = tokenizer
-        self.current_token: Token | None = None
-        self.token2parser = {
+        self.current_token: Token = self.tokenizer.get_next_token()
+        self.token2parser:dict[TokenType, Callable[[], AstExpr]] = {
             TokenType.L_PAR: lambda: self.parse_paren_lit()[0],
             TokenType.VAR_LIT: self.parse_identifier,
             TokenType.NUM_LIT: self.parse_number_lit,
@@ -542,7 +541,7 @@ class AstBuilder:
             TokenType.MOD: 40,
         }
 
-        self.symbol_table = {}
+        self.symbol_table:dict[str, AstExprType] = {}
 
     # ===-------------------------------------------
     # Parsers
@@ -551,50 +550,44 @@ class AstBuilder:
     def parse_number_lit(self) -> AstLitNumber:
         expr = AstLitNumber(int(self.current_token.value))
         self.next_token() # num -> ...
-        # print(f"parse_number_lit: {expr}")
         return expr
 
     def parse_string_lit(self) -> AstLitString:
         expr = AstLitString(str(self.current_token.value))
         self.next_token() # string -> ...
-        # print(f"parse_string_lit: {expr}")
         return expr
 
-    def parse_paren_lit(self) -> list[AstExpr] | None:
+    def parse_paren_lit(self) -> list[AstExpr]:
         self.next_token() # L_PAR -> expr
         paren_expr = [self.parse_expr()] # expr -> R_PAR | COMMA
         if paren_expr is None:
-            return None
+            raise AstError(self.tokenizer, "Unexpected empty paren expression")
 
         while self.current_token.token_type == TokenType.COMMA:
             self.next_token()
             paren_expr.append(self.parse_expr())
 
         if self.current_token.token_type != TokenType.R_PAR:
-            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
+            raise AstExpectedTokenError(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token() # R_PAR -> ...
-        # print(f"parse_paren_lit: {paren_expr}")
         return paren_expr
 
-    def parse_identifier(self, unique_id: str = "") -> AstVar | None:
+    def parse_identifier(self, unique_id: str = "") -> AstVar:
         var_id = unique_id + self.current_token.value
         if var_id not in self.symbol_table:
-            raise AstErrorUnresolvedVar(self.tokenizer, var_id)
+            raise AstUnresolvedVarError(self.tokenizer, var_id)
 
         var = AstVar(self.current_token.value, self.symbol_table[var_id], unique_id)
         self.next_token() # VAR_LIT -> ...
-        # print(f"parse_identifier: {var}: {var.get_expr_type()}")
         return var
 
-    def parse_primary(self) -> AstExpr | None:
+    def parse_primary(self) -> AstExpr:
         if self.current_token.token_type not in self.token2parser.keys():
-            raise AstErrorUnexpectedToken(self.tokenizer, self.current_token)
+            raise AstUnexpectedTokenError(self.tokenizer, self.current_token)
         token_parser = self.token2parser[self.current_token.token_type]
-        expr = token_parser()
-        # print(f"parse_primary: {expr}")
-        return expr
+        return token_parser()
 
-    def parse_binop_rhs(self, expr_rank : int, lhs : AstExpr) -> AstBinary | None:
+    def parse_binop_rhs(self, expr_rank : int, lhs : AstExpr) -> AstExpr:
         while True:
             current_token_rank = self.get_current_token_rank()
             if current_token_rank <= expr_rank:
@@ -604,36 +597,32 @@ class AstBuilder:
 
             rhs = self.parse_primary()
             if rhs is None:
-                return None
-
-            # print(f"current_token: {self.current_token}")
-            # print(f"parse_binop_rhs: {lhs} {rhs}")
+                raise AstError(self.tokenizer, "Failed while parsing binary operator (rhs expected)")
 
             next_token_rank = self.get_current_token_rank()
             if current_token_rank < next_token_rank:
                 rhs = self.parse_binop_rhs(current_token_rank + 1, lhs)
                 if rhs is None:
-                    return None
+                    raise AstError(self.tokenizer, "Failed while parsing binary operator (rhs expected)")
 
             if lhs.get_expr_type() != rhs.get_expr_type():
-                raise AstErrorTypeMismatch(self.tokenizer, lhs.get_expr_type(), rhs.get_expr_type())
+                raise AstTypeMismatchError(self.tokenizer, lhs.get_expr_type(), rhs.get_expr_type())
 
             lhs = AstBinary(token, lhs, rhs)
 
 
-    def parse_expr(self) -> AstExpr | None:
+    def parse_expr(self) -> AstExpr:
         lhs = self.parse_primary()
-        #print(f"parse_expr lhs: {lhs}")
         if lhs is None:
-            raise AstErrorExpectedToken(self.tokenizer, "None", "Expression")
+            raise AstExpectedTokenError(self.tokenizer, "None", "Expression")
         return self.parse_binop_rhs(0, lhs)
 
-    def parse_decl(self) -> AstDecl | None:
+    def parse_decl(self) -> AstDecl:
         current_var_token = self.current_token
         self.next_token() # VAR_LIT -> = (binop)
 
         if self.current_token.token_type != TokenType.ASSIGN:
-            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.ASSIGN)
+            raise AstExpectedTokenError(self.tokenizer, self.current_token.token_type, TokenType.ASSIGN)
 
         self.next_token() # ASSIGN -> expr
         expr = self.parse_expr()
@@ -643,72 +632,71 @@ class AstBuilder:
 
         return decl
 
-    def parse_block(self) -> AstBlockBody | None:
+    def parse_block(self) -> AstBlockBody:
         instruction_list = []
         self.next_token() # L_BRACE -> ...
         while self.current_token.token_type != TokenType.R_BRACE:
-            instruction = self.handle()
+            instruction = self.handle_block_body()
             instruction_list.append(instruction)
         self.next_token() # } -> ...
 
         return AstBlockBody(instruction_list)
 
-    def parse_if(self) -> AstIf | None:
+    def parse_if(self) -> AstIf:
         self.next_token() # IF -> ( | expr)
         cond_expr = self.parse_paren_lit()[0]
         if cond_expr.get_expr_type() is not AstExprType.NUM:
-            raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
+            raise AstExpectedConditionalExpressionError(self.tokenizer, cond_expr.get_expr_type())
 
         block = self.parse_block()
         return AstIf(cond_expr, block)
 
-    def parse_while(self) -> AstExpr | None:
+    def parse_while(self) -> AstWhile:
         self.next_token() # WHILE -> ( | expr)
         cond_expr = self.parse_paren_lit()[0]
         if cond_expr.get_expr_type() is not AstExprType.NUM:
-            raise AstErrorExpectedConditionalExpression(self.tokenizer, cond_expr.get_expr_type())
+            raise AstExpectedConditionalExpressionError(self.tokenizer, cond_expr.get_expr_type())
 
         block = self.parse_block()
         return AstWhile(cond_expr, block)
 
-    def parse_proto(self, seed: str) -> AstFuncProto | None:
+    def parse_proto(self, seed: str) -> AstFuncProto:
         if self.current_token.token_type != TokenType.L_PAR:
-            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.L_PAR)
+            raise AstExpectedTokenError(self.tokenizer, self.current_token.token_type, TokenType.L_PAR)
 
         self.next_token()
-        self.symbol_table[self.current_token.value] = AstExprType.STRING #TODO String type ???
+        self.symbol_table[self.current_token.value] = AstExprType.CHAR
         var = self.parse_identifier()
         if not isinstance(var, AstVar):
-            raise AstErrorExpectedArgument(self.tokenizer, var)
+            raise AstExpectedArgumentError(self.tokenizer, var)
 
         if self.current_token.token_type != TokenType.R_PAR:
-            raise AstErrorExpectedToken(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
+            raise AstExpectedTokenError(self.tokenizer, self.current_token.token_type, TokenType.R_PAR)
         self.next_token()
 
         proto_body = self.parse_block()
         return AstFuncProto(var, proto_body)
 
-    def parse_interrupt(self) -> AstInterrupt | None:
+    def parse_interrupt(self) -> AstInterrupt:
         self.next_token()
         proto = self.parse_proto("in")
         if proto is None:
-            raise AstErrorCreatingPrototype(self.tokenizer)
+            raise AstCreatingPrototypeError(self.tokenizer)
         return AstInterrupt(proto)
 
-    def parse_echo(self) -> AstEcho | None:
+    def parse_echo(self) -> AstEcho:
         self.next_token() # ECHO -> ( | expr)
         var = self.parse_paren_lit()[0]
         if not isinstance(var, AstEchoable):
-            raise AstErrorExpectedToken(self.tokenizer, var.__class__.__name__, AstEchoable.__class__.__name__)
+            raise AstExpectedTokenError(self.tokenizer, var.__class__.__name__, AstEchoable.__class__.__name__)
 
         return AstEcho(var)
 
-    def parse_strcat(self) -> AstStrCat | None:
+    def parse_strcat(self) -> AstStrCat:
         self.next_token()
         dest, src, size = self.parse_paren_lit()
         if not isinstance(dest, AstVar) and dest.get_expr_type() is not AstExprType.STRING:
-            #TODO Raise error here (destination must be a variable with type string)
-            return None
+            raise AstExpectedTokenError(self.tokenizer, dest.get_expr_type(), src.get_expr_type())
         return AstStrCat(dest, src, size)
 
     #===-------------------------------------------
@@ -719,28 +707,31 @@ class AstBuilder:
         if self.current_token.token_type == TokenType.EOF:
             return None
         if self.current_token.token_type in self.handle2handler.keys():
-            ast_node = self.handle2handler[self.current_token.token_type]()
-            return ast_node
-        else:
-            raise AstErrorUnexpectedToken(self.tokenizer, self.current_token.token_type)
+            return self.handle2handler[self.current_token.token_type]()
+        raise AstUnexpectedTokenError(self.tokenizer, self.current_token.token_type)
 
-    def handle_decl(self) -> AstDecl | None:
+    def handle_block_body(self) -> AstExpr:
+        if self.current_token.token_type in self.handle2handler.keys():
+            return self.handle2handler[self.current_token.token_type]()
+        raise AstUnexpectedTokenError(self.tokenizer, self.current_token.token_type)
+
+    def handle_decl(self) -> AstDecl:
         return self.parse_decl()
 
-    def handle_if(self) -> AstIf | None:
+    def handle_if(self) -> AstIf:
         return self.parse_if()
 
-    def handle_while(self) -> AstWhile | None:
+    def handle_while(self) -> AstWhile:
         return self.parse_while()
 
-    def handle_interrupt(self) -> AstInterrupt | None:
+    def handle_interrupt(self) -> AstInterrupt:
         #TODO only one interrupt handler can be in code
         return self.parse_interrupt()
 
-    def handle_echo(self) -> AstEcho | None:
+    def handle_echo(self) -> AstEcho:
         return self.parse_echo()
 
-    def handle_strcat(self) -> AstStrCat | None:
+    def handle_strcat(self) -> AstStrCat:
         return self.parse_strcat()
 
     #===-------------------------------------------
@@ -750,17 +741,12 @@ class AstBuilder:
     def get_current_token_rank(self) -> int:
         if self.current_token.token_type in self.bin_op_rank.keys():
             return self.bin_op_rank[self.current_token.token_type]
-        else:
-            return 0
+        return 0
 
     def next_token(self) -> None:
         self.current_token = self.tokenizer.get_next_token()
-        #print(f"next token: {self.current_token}")
 
     def build(self):
-        if self.current_token is None:
-            self.next_token()
-
         instructions = list()
 
         instruction = self.handle()

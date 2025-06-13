@@ -1,4 +1,5 @@
-from isa import Instruction, Opcode, ArgType, WORD_SIZE
+from isa import WORD_SIZE, ArgType, Instruction, Opcode
+
 
 class TranslateError(Exception):
     def __init__(self, message: str) -> None:

@@ -3,6 +3,15 @@ from __future__ import annotations
 import enum
 import struct
 
+
+class OpcodeOverflowError(Exception):
+    def __init__(self, opcode):
+        super().__init__(f"Opcode {hex(opcode)} must fit in 5 bits")
+
+class ArgTypeOverflowError(Exception):
+    def __init__(self, arg):
+        super().__init__(f"Arg {hex(arg)} must fit in 2 bits")
+
 WORD_SIZE = 32
 
 @enum.unique
@@ -88,11 +97,7 @@ class Instruction:
             arg = struct.unpack_from("i", data, offset)[0]
             offset += 4
             return Instruction(Opcode(opcode_value), arg, ArgType(arg_type_value)), offset
-        else:
-            return Instruction(Opcode(opcode_value), None, ArgType.IMMEDIATE), offset
-
-
-        pass
+        return Instruction(Opcode(opcode_value), None, ArgType.IMMEDIATE), offset
 
     @staticmethod
     def parse(line: str) -> Instruction:
@@ -108,10 +113,10 @@ class Instruction:
 
     def get_coded(self) -> int:
         if not (0 <= self.opcode.value < (1 << 5)):
-            raise ValueError("Opcode must fit in 5 bits")
+            raise OpcodeOverflowError(self.opcode)
 
         if not (0 <= self.arg_type.value < (1 << 2)):
-            raise ValueError("ArgType must fit in 2 bits")
+            raise ArgTypeOverflowError(self.arg_type.value)
 
         result = (self.opcode.value & 0x1F) << 27  # 5 бит opcode
         result |= (self.arg_type.value & 0x03) << 25  # 2 бита arg_type
@@ -122,7 +127,7 @@ class Instruction:
 
 class BranchMark:
     def __init__(self) -> None:
-        self.position = None
+        self.position:None|int = None
 
     def set_position(self, position: int) -> None:
         self.position = position
