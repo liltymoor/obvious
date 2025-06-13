@@ -5,6 +5,7 @@ class TranslateError(Exception):
     def __init__(self, message: str) -> None:
         super().__init__(f"TranslateError occured: {message}")
 
+
 class Translator:
     def __init__(self) -> None:
         self.output_port = 0x0000001
@@ -20,7 +21,6 @@ class Translator:
         self.var_table: dict[str, int] = {}
 
     def allocate_data(self, size: int, val: list[int]) -> int:
-
         assert size >= len(val)
 
         if self.mem_cur + size >= self.mem_end:

@@ -1,6 +1,7 @@
 """Golden тесты транслятора и машины.
 Конфигурационнфе файлы: "golden/*.yml"
 """
+
 import ast
 import contextlib
 import io
@@ -21,10 +22,12 @@ def parse_yaml_input(s: str) -> list[tuple[int, str]]:
 
     return [(int(num), str(char)) for num, char in data]
 
+
 def get_last_n_lines(text: str, n: int) -> str:
-        lines = text.splitlines()
-        last_n_lines = lines[-n:] if len(lines) > n else lines
-        return "\n".join(last_n_lines)
+    lines = text.splitlines()
+    last_n_lines = lines[-n:] if len(lines) > n else lines
+    return "\n".join(last_n_lines)
+
 
 @pytest.mark.golden_test("../golden/*.yml")
 def test_translator_and_machine(golden, caplog):

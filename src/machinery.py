@@ -6,9 +6,11 @@ from isa import ArgType, Instruction, Opcode
 class HaltReachedError(Exception):
     pass
 
+
 class UnexpectedOpcodeError(Exception):
     def __init__(self, opcode):
         super().__init__(f"Unexpected opcode {opcode}")
+
 
 class ALU:
     def __init__(self) -> None:
@@ -30,7 +32,7 @@ class ALU:
             Opcode.AND: lambda: lhs & rhs,
             Opcode.OR: lambda: lhs | rhs,
             Opcode.NOT: lambda: int(lhs == 0),
-            Opcode.NEG: lambda: -lhs
+            Opcode.NEG: lambda: -lhs,
         }
 
         self.result = operations[op]()
@@ -49,6 +51,7 @@ class ALU:
 
     def get_flags(self) -> tuple[bool, bool]:
         return self.N, self.Z
+
 
 class MUX(enum.Enum):
     RHS_FROM_DR = enum.auto()
@@ -70,6 +73,7 @@ class MUX(enum.Enum):
 
     RAM_R_FROM_PC = enum.auto()
     RAM_R_FROM_AR = enum.auto()
+
 
 class DataPath:
     def __init__(self, mem_size: int, program: list[Instruction]):
@@ -170,56 +174,58 @@ class DataPath:
             mem_data.append(self.memory[start_addr + i])
         if decode == "ascii":
             mapped_mem_data = map(chr, mem_data)
-            return f"{hex(start_addr)}: [{",".join(mapped_mem_data)}]"
+            return f"{hex(start_addr)}: [{','.join(mapped_mem_data)}]"
         mapped_mem_data = map(hex, mem_data)
-        return f"{hex(start_addr)}: [{",".join(mapped_mem_data)}]"
+        return f"{hex(start_addr)}: [{','.join(mapped_mem_data)}]"
+
 
 class ControlUnit:
-    def __init__(self, data_path: DataPath,
-                 in_queue: list[tuple[int, str]],
-                 can_be_interrupted: bool = False,
-                 collect_trace: bool = False,
-                 ) -> None:
+    def __init__(
+        self,
+        data_path: DataPath,
+        in_queue: list[tuple[int, str]],
+        can_be_interrupted: bool = False,
+        collect_trace: bool = False,
+    ) -> None:
         self.dp = data_path
         self.tick = 0
 
         self.input = in_queue
-        self.output:list[tuple[int, str]] = []
+        self.output: list[tuple[int, str]] = []
 
         self.interrupted = False
         self.ilock = not can_be_interrupted
 
         self.collect_trace = collect_trace
-        self.trace:list[str] = []
+        self.trace: list[str] = []
 
     def pass_output(self):
         self.output.append((self.tick, int(self.dp.output)))
 
     def instr_fetch(self) -> tuple[Opcode, int]:
-        self.dp.latch_cr(MUX.RAM_R_FROM_PC) # CR = RAM[PC]
+        self.dp.latch_cr(MUX.RAM_R_FROM_PC)  # CR = RAM[PC]
         self.dp.latch_pc(MUX.PC_INC)
         self.next_tick()
         return Opcode(self.dp.get_cr_opcode()), self.dp.get_cr_optype()
-
 
     def operand_fetch(self, argtype: ArgType):
         if argtype is ArgType.IMMEDIATE:
             return
         if argtype is ArgType.DIRECT:
             self.dp.latch_ar(MUX.AR_FROM_CR)
-            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = CR[7:32]]
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR)  # DR = RAM[AR = CR[7:32]]
             self.next_tick()
             return
         if argtype is ArgType.INDIRECT:
             self.dp.latch_ar(MUX.AR_FROM_CR)
-            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = CR[7:32]]
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR)  # DR = RAM[AR = CR[7:32]]
             self.next_tick()
             self.dp.latch_ar(MUX.AR_FROM_DR)
-            self.dp.latch_dr(MUX.RAM_R_FROM_AR) # DR = RAM[AR = DR]
+            self.dp.latch_dr(MUX.RAM_R_FROM_AR)  # DR = RAM[AR = DR]
             self.next_tick()
             return
 
-    def execute(self, opcode, arg_type: ArgType): # noqa: C901
+    def execute(self, opcode, arg_type: ArgType):  # noqa: C901
         match opcode:
             case Opcode.ADD | Opcode.SUB | Opcode.MUL | Opcode.DIV | Opcode.MOD | Opcode.AND | Opcode.OR:
                 self._execute_binary_op(opcode, arg_type)
@@ -272,9 +278,7 @@ class ControlUnit:
 
     def _execute_jump(self, opcode, arg_type):
         n, z = self.dp.alu.get_flags()
-        should_jump = (opcode == Opcode.JMP or
-                       (opcode == Opcode.JNZ and not z) or
-                       (opcode == Opcode.JZ and z))
+        should_jump = opcode == Opcode.JMP or (opcode == Opcode.JNZ and not z) or (opcode == Opcode.JZ and z)
         if should_jump:
             path = self._get_path_for_arg_type(arg_type, MUX.PC_FROM_CR, MUX.PC_FROM_DR)
             self.dp.latch_pc(path)
@@ -346,19 +350,19 @@ class ControlUnit:
         self.tick += 1
 
     def snapshot_cu(self) -> str:
-        return (F"TICK{"(I)" if self.interrupted else ""}: {self.tick:8} |"
-                F" Command: {Opcode(self.dp.get_cr_opcode()):13} |"
-                F" PC: {self.dp.pc:4} |"
-                F" CR: {hex(self.dp.cr):15}"
-                F" ACC: {hex(self.dp.acc):10} |"
-                F" DR: {hex(self.dp.dr):10} |"
-                F" AR: {hex(self.dp.ar):10}"
-                F" FLAGS: {self.dp.alu.get_flags()!s:4}")
+        return (
+            f"TICK{'(I)' if self.interrupted else ''}: {self.tick:8} |"
+            f" Command: {Opcode(self.dp.get_cr_opcode()):13} |"
+            f" PC: {self.dp.pc:4} |"
+            f" CR: {hex(self.dp.cr):15}"
+            f" ACC: {hex(self.dp.acc):10} |"
+            f" DR: {hex(self.dp.dr):10} |"
+            f" AR: {hex(self.dp.ar):10}"
+            f" FLAGS: {self.dp.alu.get_flags()!s:4}"
+        )
 
     def memory_snapshot(self, addr: int, snap_sz: int, decode: str = "ascii") -> str:
         return self.dp.snapshot_mem(addr, decode=decode, snap_size=snap_sz)
 
     def get_output(self):
         return self.output if len(self.output) > 0 else []
-
-

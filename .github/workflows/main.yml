@@ -38,11 +38,19 @@ jobs:
       if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
       run: poetry install --no-root --with dev
     
-    - name: Format code with Ruff
+    - name: Format and check code with Ruff
       run: |
-        poetry run ruff format src/ --check
+        echo "🔧 Formatting code..."
+        poetry run ruff format src/
         if [ $? -ne 0 ]; then
-          echo "❌ Code formatting issues found. Please run 'poetry run ruff format src/' locally."
+          echo "❌ Formatting failed"
+          exit 1
+        fi
+        
+        echo "🔍 Checking code..."
+        poetry run ruff check src/
+        if [ $? -ne 0 ]; then
+          echo "❌ Linting failed"
           exit 1
         fi
     

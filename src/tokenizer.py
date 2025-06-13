@@ -10,6 +10,7 @@ class TokenParseError(Exception):
     def __init__(self) -> None:
         super().__init__("Failed while parsing token")
 
+
 def parse_keyword(keyword: str, text: TextIOBase) -> str:
     s = text.read(len(keyword))
     if s == keyword:
@@ -44,6 +45,7 @@ def parse_string(text: TextIOBase) -> str:
         if cur != '"':
             return ""
     return res
+
 
 def parse_var(text: TextIOBase) -> str:
     res = ""
@@ -125,6 +127,7 @@ class Tokenizer:
         self.text = text
         self.stack: list[Token] = []
         self.line = 0
+
     def get_next_token(self) -> Token:
         if self.stack:
             return self.stack.pop()

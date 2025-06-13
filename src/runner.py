@@ -15,10 +15,10 @@ def parse_int_or_hex(value):
         raise RuntimeError()
 
 
-def run(target:str, verbose: bool=False, input_stream: list[tuple[int, str]] = []):
+def run(target: str, verbose: bool = False, input_stream: list[tuple[int, str]] = []):
     assert str.endswith(target, ".bin"), "Runnable target must end with .bin"
     with open(target, "rb") as binary:
-        instructions:list[Instruction] = list()
+        instructions: list[Instruction] = list()
         data = binary.read()
         offset = 0
 
@@ -31,12 +31,7 @@ def run(target:str, verbose: bool=False, input_stream: list[tuple[int, str]] = [
             instructions.append(i)
 
     dp = DataPath(2**25, instructions)
-    cu = ControlUnit(
-        dp,
-        input_stream,
-        can_be_interrupted=can_be_interrupted,
-        collect_trace=verbose
-    )
+    cu = ControlUnit(dp, input_stream, can_be_interrupted=can_be_interrupted, collect_trace=verbose)
 
     iter_counter = 0
     try:
@@ -59,12 +54,15 @@ if __name__ == "__main__":
     parser.add_argument("target", help="Specify Obvious-binary target")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable trace logging")
 
-    #TODO Realizr memory snapshot
-    parser.add_argument("--memsnap", nargs=2,
-                        type=parse_int_or_hex,
-                        metavar=("HEX", "INT"),
-                        help="Tuple of: first — hex (for example, 0x1a), second — int",
-                        default=(-1, -1))
+    # TODO Realizr memory snapshot
+    parser.add_argument(
+        "--memsnap",
+        nargs=2,
+        type=parse_int_or_hex,
+        metavar=("HEX", "INT"),
+        help="Tuple of: first — hex (for example, 0x1a), second — int",
+        default=(-1, -1),
+    )
 
     args = parser.parse_args()
     run(args.target, args.verbose)

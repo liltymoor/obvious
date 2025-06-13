@@ -8,11 +8,14 @@ class OpcodeOverflowError(Exception):
     def __init__(self, opcode):
         super().__init__(f"Opcode {hex(opcode)} must fit in 5 bits")
 
+
 class ArgTypeOverflowError(Exception):
     def __init__(self, arg):
         super().__init__(f"Arg {hex(arg)} must fit in 2 bits")
 
+
 WORD_SIZE = 32
+
 
 @enum.unique
 class Opcode(enum.Enum):
@@ -48,8 +51,8 @@ class Opcode(enum.Enum):
 
     HALT = enum.auto()
 
-    IN = enum.auto() # pass in reg to acc
-    OUT = enum.auto() # pass acc to out reg
+    IN = enum.auto()  # pass in reg to acc
+    OUT = enum.auto()  # pass acc to out reg
 
     IRET = enum.auto()
     ILOCK = enum.auto()
@@ -63,8 +66,7 @@ class ArgType(enum.Enum):
 
 
 class Instruction:
-    def __init__(
-        self, opcode: Opcode, arg: int | None = None, arg_type: ArgType = ArgType.DIRECT) -> None:
+    def __init__(self, opcode: Opcode, arg: int | None = None, arg_type: ArgType = ArgType.DIRECT) -> None:
         self.opcode = opcode
         self.arg = arg
         self.arg_type = arg_type
@@ -75,7 +77,7 @@ class Instruction:
         )
 
     def get_raw_instruction(self) -> bytes:
-        #B (unsigned char), b (signed char), ? (bool), i (int32)
+        # B (unsigned char), b (signed char), ? (bool), i (int32)
         opcode_value = self.opcode.value
         arg_type_value = self.arg_type.value
         has_arg = 0 if self.arg is None else 1
@@ -88,7 +90,7 @@ class Instruction:
         return data
 
     @staticmethod
-    def from_raw_instruction(data:bytes, offset:int = 0) -> tuple[Instruction, int]:
+    def from_raw_instruction(data: bytes, offset: int = 0) -> tuple[Instruction, int]:
         # returns the actual instruction and new offset
         opcode_value, arg_type_value, has_arg = struct.unpack_from("BBB", data, offset)
         offset += 3
@@ -121,13 +123,13 @@ class Instruction:
         result = (self.opcode.value & 0x1F) << 27  # 5 бит opcode
         result |= (self.arg_type.value & 0x03) << 25  # 2 бита arg_type
         if self.arg is not None:
-            result |= (self.arg & 0x1FFFFFF)  # 25 бит аргумента
+            result |= self.arg & 0x1FFFFFF  # 25 бит аргумента
         return result
 
 
 class BranchMark:
     def __init__(self) -> None:
-        self.position:None|int = None
+        self.position: None | int = None
 
     def set_position(self, position: int) -> None:
         self.position = position
@@ -144,11 +146,13 @@ class MarkedInstruction:
     def get_raw_instruction(self) -> bytes:
         return self.instruction.get_raw_instruction()
 
+
 def init(ptr: int, arg_type: ArgType, value: int = 0) -> list[Instruction]:
     instructions = []
     instructions.append(Instruction(Opcode.LD, value, ArgType.IMMEDIATE))
     instructions.append(Instruction(Opcode.ST, ptr, arg_type))
     return instructions
+
 
 def inc(ptr: int, arg_type: ArgType) -> list[Instruction]:
     instructions = []
@@ -158,6 +162,7 @@ def inc(ptr: int, arg_type: ArgType) -> list[Instruction]:
         arg_type = ArgType(arg_type.value - 1)
     instructions.append(Instruction(Opcode.ST, ptr, arg_type))
     return instructions
+
 
 def dec(ptr: int, arg_type: ArgType) -> list[Instruction]:
     instructions = []
