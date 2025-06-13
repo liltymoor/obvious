@@ -1,0 +1,138 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  ruff-check:
+    name: Ruff Linting and Formatting
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-root --with dev
+    
+    - name: Format code with Ruff
+      run: |
+        poetry run ruff format src/ --check
+        if [ $? -ne 0 ]; then
+          echo "❌ Code formatting issues found. Please run 'poetry run ruff format src/' locally."
+          exit 1
+        fi
+    
+    - name: Lint code with Ruff
+      run: |
+        poetry run ruff check src/
+        if [ $? -ne 0 ]; then
+          echo "❌ Linting issues found. Please fix them or run 'poetry run ruff check src/ --fix' locally."
+          exit 1
+        fi
+
+  mypy-check:
+    name: MyPy Type Checking
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-root --with dev
+    
+    - name: Type check with MyPy
+      run: |
+        poetry run mypy src/
+        if [ $? -ne 0 ]; then
+          echo "❌ Type checking failed. Please fix type errors."
+          exit 1
+        fi
+
+  pytest-check:
+    name: Pytest Testing
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+        installer-parallel: true
+    
+    - name: Load cached venv
+      id: cached-poetry-dependencies
+      uses: actions/cache@v3
+      with:
+        path: .venv
+        key: venv-${{ runner.os }}-${{ steps.setup-python.outputs.python-version }}-${{ hashFiles('**/poetry.lock') }}
+    
+    - name: Install dependencies
+      if: steps.cached-poetry-dependencies.outputs.cache-hit != 'true'
+      run: poetry install --no-root --with dev
+    
+    - name: Run tests with Pytest
+      run: |
+        poetry run pytest
+        if [ $? -ne 0 ]; then
+          echo "❌ Tests failed. Please fix failing tests."
+          exit 1
+        fi
+    
+    - name: Upload coverage reports (optional)
+      if: success()
+      run: |
+        echo "Tests passed successfully! ✅"
