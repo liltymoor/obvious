@@ -196,15 +196,16 @@ class DataPath:
             return f"{hex(start_addr)}: [{",".join(mem_data)}]"
 
 class ControlUnit:
-    def __init__(self, data_path: DataPath, in_queue: list[tuple[int, str]]):
+    def __init__(self, data_path: DataPath, in_queue: list[tuple[int, str]], can_be_interrupted: bool = False):
         self.dp = data_path
         self.tick = 0
         self.input = in_queue
         self.output:list[tuple[int, str]] = []
         self.interrupted = False
-        self.ilock = False
+        self.ilock = not can_be_interrupted
 
     def pass_output(self):
+        print(hex(self.dp.output))
         self.output.append((self.tick, chr(self.dp.output)))
 
     def instr_fetch(self) -> tuple[Opcode, int]:

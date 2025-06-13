@@ -326,10 +326,23 @@ class AstEcho(AstExpr):
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
         # todo если Litstring реализовать другую логику
-        if isinstance(self.echo_expr, AstVar) and self.echo_expr.get_expr_type() is AstExprType.STRING:
-            pass
-        elif isinstance(self.echo_expr, AstLitString):
-            pass
+        if (isinstance(self.echo_expr, AstVar) and self.echo_expr.get_expr_type() is AstExprType.STRING) or isinstance(self.echo_expr, AstLitString):
+            tmp_iterator_ptr = translator.allocate_for_tmp_expr()
+            null_term_mark = BranchMark()
+            printing_mark = BranchMark()
+
+            instructions += self.echo_expr.translate(translator)
+            instructions.append(Instruction(Opcode.ST, tmp_iterator_ptr, ArgType.IMMEDIATE))
+
+            instructions.append(printing_mark)
+            instructions.append(Instruction(Opcode.LD, tmp_iterator_ptr, ArgType.INDIRECT))
+            instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
+            instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), null_term_mark))
+            instructions += inc(tmp_iterator_ptr, ArgType.DIRECT)
+            instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), printing_mark))
+
+            instructions.append(null_term_mark)
+            translator.free_tmp_expr(tmp_iterator_ptr)
         else:
             instructions += self.echo_expr.translate(translator)
             instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
@@ -355,6 +368,9 @@ class AstStrCat(AstExpr):
 
     def __str__(self) -> str:
         return "strcat(" + str(self.dest) + ", " + str(self.src) + ")"
+
+    def get_expr_type(self) -> AstExprType:
+        return AstExprType.STRING
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()

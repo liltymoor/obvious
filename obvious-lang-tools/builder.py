@@ -1,3 +1,4 @@
+import struct
 import sys
 
 from tokenizer import Tokenizer
@@ -40,6 +41,7 @@ def build(src=type[str], target=type[str]):
             print( f"{str(i_num):<2}: {str(i)}")
 
         with open(target, 'wb') as binary:
+            binary.write(struct.pack('?', len(interrupt_instructions) > 0))
             for i in code:
                 raw = i.get_raw_instruction()
                 binary.write(raw)
