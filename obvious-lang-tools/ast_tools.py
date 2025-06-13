@@ -3,7 +3,7 @@ from io import TextIOBase
 
 from tokenizer import Tokenizer, Token, TokenType
 from translator import Translator, TranslateError
-from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark, init, inc
+from isa import Opcode, Instruction, MarkedInstruction, ArgType, BranchMark, init, inc, dec
 
 # ===-------------------------------------------
 # Ast Errors
@@ -101,7 +101,7 @@ class AstLitString(AstEchoable, AstLit):
 
     @staticmethod
     def serialize(string: str) -> list[int]:
-        return list(map(ord, string)) + [0]
+        return [len(string)] + list(map(ord, string))
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
@@ -145,6 +145,8 @@ class AstBinary(AstExpr):
         "*" : Opcode.MUL,
         "/" : Opcode.DIV,
         "%" : Opcode.MOD,
+        "&" : Opcode.AND,
+        "|" : Opcode.OR,
     }
 
     def __init__(self, op: Token, left: AstExpr, right: AstExpr) -> None:
@@ -158,44 +160,42 @@ class AstBinary(AstExpr):
     def __str__(self) -> str:
         return f"{str(self.left)} {self.op.value} {str(self.right)}"
 
-
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = []
 
-        if isinstance(self.left, AstVar):
-            left = translator.get_var_addr(self.left.name)
-            left_is_direct = True
-        elif isinstance(self.left, AstLit) and isinstance(self.right, AstLit):
-            left = self.left.value
-            left_is_direct = False
+        if isinstance(self.right, AstVar):
+            right = translator.get_var_addr(self.right.name)
+            right_is_direct = True
+        elif isinstance(self.right, AstLit) and isinstance(self.left, AstLit):
+            right = self.right.value
+            right_is_direct = False
         else:
-            instructions += self.left.translate(translator)
-            left = translator.allocate_for_tmp_expr()
-            instructions.append(Instruction(Opcode.ST, left, ArgType.IMMEDIATE))
-            left_is_direct = True
+            instructions += self.right.translate(translator)
+            right = translator.allocate_for_tmp_expr()
+            instructions.append(Instruction(Opcode.ST, right, ArgType.IMMEDIATE))
+            right_is_direct = True
 
-
-        instructions += self.right.translate(translator)
+        instructions += self.left.translate(translator)
 
         if self.op.value in self.opertator2opcode.keys():
             instructions.append(
                 Instruction(
                     self.opertator2opcode[self.op.value],
-                    left,
-                    ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE
+                    right,
+                    ArgType.DIRECT if right_is_direct else ArgType.IMMEDIATE
                 )
             )
         elif self.op.token_type == TokenType.GT:
-            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.CMP, right, ArgType.DIRECT if right_is_direct else ArgType.IMMEDIATE))
             instructions.append(Instruction(Opcode.SETG))
         elif self.op.token_type == TokenType.LT:
-            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.CMP, right, ArgType.DIRECT if right_is_direct else ArgType.IMMEDIATE))
             instructions.append(Instruction(Opcode.SETL))
         elif self.op.token_type == TokenType.EQ:
-            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.CMP, right, ArgType.DIRECT if right_is_direct else ArgType.IMMEDIATE))
             instructions.append(Instruction(Opcode.SETE))
         elif self.op.token_type == TokenType.NEQ:
-            instructions.append(Instruction(Opcode.CMP, left, ArgType.DIRECT if left_is_direct else ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.CMP, right, ArgType.DIRECT if right_is_direct else ArgType.IMMEDIATE))
             instructions.append(Instruction(Opcode.SETE))
             instructions.append(Instruction(Opcode.NOT))
         else:
@@ -325,30 +325,41 @@ class AstEcho(AstExpr):
 
     def translate(self, translator: Translator) -> list[Instruction]:
         instructions = list()
-        # todo если Litstring реализовать другую логику
-        if (isinstance(self.echo_expr, AstVar) and self.echo_expr.get_expr_type() is AstExprType.STRING) or isinstance(self.echo_expr, AstLitString):
+        if self.echo_expr.get_expr_type() is AstExprType.STRING:
             tmp_iterator_ptr = translator.allocate_for_tmp_expr()
-            null_term_mark = BranchMark()
-            printing_mark = BranchMark()
+            tmp_length = translator.allocate_for_tmp_expr()
+            loop_mark = BranchMark()
+            end_mark = BranchMark()
 
             instructions += self.echo_expr.translate(translator)
             instructions.append(Instruction(Opcode.ST, tmp_iterator_ptr, ArgType.IMMEDIATE))
 
-            instructions.append(printing_mark)
+            instructions.append(Instruction(Opcode.LD, tmp_iterator_ptr, ArgType.INDIRECT))
+            instructions.append(Instruction(Opcode.ST, tmp_length, ArgType.IMMEDIATE))
+            instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
+
+            instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), end_mark))
+
+            instructions += inc(tmp_iterator_ptr, ArgType.DIRECT)
+
+            instructions.append(loop_mark)
             instructions.append(Instruction(Opcode.LD, tmp_iterator_ptr, ArgType.INDIRECT))
             instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
-            instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), null_term_mark))
             instructions += inc(tmp_iterator_ptr, ArgType.DIRECT)
-            instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), printing_mark))
+            instructions += dec(tmp_length, ArgType.DIRECT)
+            instructions.append(Instruction(Opcode.LD, tmp_length, ArgType.DIRECT))
+            instructions.append(Instruction(Opcode.SETG, None, ArgType.IMMEDIATE))
+            instructions.append(MarkedInstruction(Instruction(Opcode.JNZ, None, ArgType.IMMEDIATE), loop_mark))
 
-            instructions.append(null_term_mark)
+            instructions.append(end_mark)
             translator.free_tmp_expr(tmp_iterator_ptr)
+            translator.free_tmp_expr(tmp_length)
         else:
             instructions += self.echo_expr.translate(translator)
             instructions.append(Instruction(Opcode.OUT, None, ArgType.IMMEDIATE))
         return instructions
 
-class AstStrCat(AstExpr):
+class AstStrCat(AstEchoable):
     # total_size is the result buffer size (with null-term included)
     def __init__(self, dest: AstExpr, src: AstExpr, total_size: AstExpr) -> None:
         if dest.get_expr_type() != AstExprType.STRING:
@@ -376,74 +387,96 @@ class AstStrCat(AstExpr):
         instructions = list()
 
         instructions += self.dest.translate(translator)
-        # we have src_head in acc
-        # tmp_iterator = src_head
-        tmp_iterator = translator.allocate_for_tmp_expr()
-        instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.IMMEDIATE))
+        # we have dest_head in acc
+        tmp_dest_iterator = translator.allocate_for_tmp_expr()
+        instructions.append(Instruction(Opcode.ST, tmp_dest_iterator, ArgType.IMMEDIATE))
 
-        # catted_ptr = catted_ptr
         catted_ptr_head = translator.allocate_memory(self.size.value)
         tmp_catted_ptr = translator.allocate_for_tmp_expr()
         instructions += init(tmp_catted_ptr, ArgType.IMMEDIATE, catted_ptr_head)
 
-        # counter = 0
-        tmp_copied_cntr = translator.allocate_for_tmp_expr()
-        instructions += init(tmp_copied_cntr, ArgType.IMMEDIATE)
+        tmp_dest_length = translator.allocate_for_tmp_expr()
+        tmp_src_length = translator.allocate_for_tmp_expr()
+        tmp_total_length = translator.allocate_for_tmp_expr()
 
-        check_for_terminator_mark = BranchMark()
-        go_to_copying_from_src_mark = BranchMark()
-        set_null_term_mark = BranchMark()
+        instructions.append(Instruction(Opcode.LD, tmp_dest_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_dest_length, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, tmp_total_length, ArgType.IMMEDIATE))
 
-        instructions.append(check_for_terminator_mark)
-        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
-
-        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
-
-        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
-        instructions += inc(tmp_iterator, ArgType.DIRECT)
-        instructions += inc(tmp_copied_cntr, ArgType.DIRECT)
-
-        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), set_null_term_mark))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), check_for_terminator_mark))
-
-        instructions.append(go_to_copying_from_src_mark)
-
-        # получаем адрев дест идем до терминатора
-        # как ток дошли начинаем записывать значения из src
         tmp_src_iterator = translator.allocate_for_tmp_expr()
-
-        copying_from_src_mark = BranchMark()
-        src_terminator_reached_mark = BranchMark()
-
         instructions += self.src.translate(translator)
         instructions.append(Instruction(Opcode.ST, tmp_src_iterator, ArgType.IMMEDIATE))
 
-        instructions.append(copying_from_src_mark)
+        instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_src_length, ArgType.IMMEDIATE))
+
+        instructions.append(Instruction(Opcode.ADD, tmp_total_length, ArgType.DIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_total_length, ArgType.IMMEDIATE))
+
+        check_overflow_mark = BranchMark()
+        continue_concat_mark = BranchMark()
+
+        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.SETG, None, ArgType.IMMEDIATE))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JNZ, None, ArgType.IMMEDIATE), check_overflow_mark))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), continue_concat_mark))
+
+        instructions.append(check_overflow_mark)
+
+        instructions += init(tmp_total_length, ArgType.IMMEDIATE, self.size.value - 1)
+
+        instructions.append(continue_concat_mark)
+
+        instructions.append(Instruction(Opcode.LD, tmp_total_length, ArgType.DIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
+        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
+
+        copy_dest_mark = BranchMark()
+        dest_done_mark = BranchMark()
+
+        instructions += inc(tmp_dest_iterator, ArgType.DIRECT)
+
+        instructions.append(copy_dest_mark)
+        instructions.append(Instruction(Opcode.LD, tmp_dest_length, ArgType.DIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), dest_done_mark))
+
+        instructions.append(Instruction(Opcode.LD, tmp_dest_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
+
+        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
+        instructions += inc(tmp_dest_iterator, ArgType.DIRECT)
+        instructions += dec(tmp_dest_length, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copy_dest_mark))
+
+        instructions.append(dest_done_mark)
+
+        copy_src_mark = BranchMark()
+        src_done_mark = BranchMark()
+
+        instructions += inc(tmp_src_iterator, ArgType.DIRECT)
+
+        instructions.append(copy_src_mark)
+        instructions.append(Instruction(Opcode.LD, tmp_src_length, ArgType.DIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), src_done_mark))
 
         instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), go_to_copying_from_src_mark))
-
         instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
 
         instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
         instructions += inc(tmp_src_iterator, ArgType.DIRECT)
-        instructions += inc(tmp_copied_cntr, ArgType.DIRECT)
+        instructions += dec(tmp_src_length, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copy_src_mark))
 
-        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), set_null_term_mark))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copying_from_src_mark))
-        instructions.append(set_null_term_mark)
-
-        instructions += init(tmp_catted_ptr, ArgType.DIRECT)
+        instructions.append(src_done_mark)
 
         instructions.append(Instruction(Opcode.LD, catted_ptr_head, ArgType.IMMEDIATE))
 
-        translator.free_tmp_expr(tmp_iterator)
+        translator.free_tmp_expr(tmp_dest_iterator)
         translator.free_tmp_expr(tmp_src_iterator)
         translator.free_tmp_expr(tmp_catted_ptr)
-        translator.free_tmp_expr(tmp_copied_cntr)
+        translator.free_tmp_expr(tmp_dest_length)
+        translator.free_tmp_expr(tmp_src_length)
+        translator.free_tmp_expr(tmp_total_length)
 
         return instructions
 

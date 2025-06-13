@@ -205,8 +205,7 @@ class ControlUnit:
         self.ilock = not can_be_interrupted
 
     def pass_output(self):
-        print(hex(self.dp.output))
-        self.output.append((self.tick, chr(self.dp.output)))
+        self.output.append((self.tick, int(self.dp.output)))
 
     def instr_fetch(self) -> tuple[Opcode, int]:
         self.dp.latch_cr(MUX.RAM_R_FROM_PC) # CR = RAM[PC]
@@ -344,7 +343,7 @@ class ControlUnit:
         if opc not in non_addr_command:
             self.operand_fetch(arg_type)
 
-        print(self.snapshot_cu())
+        #print(self.snapshot_cu())
         self.execute(opc, arg_type)
         if self.icheck():
             self.interrupt()

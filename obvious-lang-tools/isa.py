@@ -153,3 +153,12 @@ def inc(ptr: int, arg_type: ArgType) -> list[Instruction]:
         arg_type = ArgType(arg_type.value - 1)
     instructions.append(Instruction(Opcode.ST, ptr, arg_type))
     return instructions
+
+def dec(ptr: int, arg_type: ArgType) -> list[Instruction]:
+    instructions = []
+    instructions.append(Instruction(Opcode.LD, ptr, arg_type))
+    instructions.append(Instruction(Opcode.SUB, 1, ArgType.IMMEDIATE))
+    if arg_type != arg_type.IMMEDIATE:
+        arg_type = ArgType(arg_type.value - 1)
+    instructions.append(Instruction(Opcode.ST, ptr, arg_type))
+    return instructions
