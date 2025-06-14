@@ -1,4 +1,5 @@
 import argparse
+import ast
 import os
 import struct
 
@@ -15,7 +16,7 @@ def parse_int_or_hex(value):
         raise RuntimeError()
 
 
-def run(target: str, verbose: bool = False, input_stream: list[tuple[int, str]] = []):
+def run(target: str, input_stream: list[tuple[int, str]], verbose: bool = False):
     assert str.endswith(target, ".bin"), "Runnable target must end with .bin"
     with open(target, "rb") as binary:
         instructions: list[Instruction] = list()
@@ -25,7 +26,6 @@ def run(target: str, verbose: bool = False, input_stream: list[tuple[int, str]] 
         can_be_interrupted = struct.unpack_from("?", data, offset)[0]
         offset += 1
 
-        instructions = []
         while offset < len(data):
             i, offset = Instruction.from_raw_instruction(data, offset)
             instructions.append(i)
@@ -49,9 +49,14 @@ def run(target: str, verbose: bool = False, input_stream: list[tuple[int, str]] 
         print("Total ticks:", cu.tick)
 
 
+def parse_yaml_input(s: str) -> list[tuple[int, str]]:
+    data = ast.literal_eval(s)
+    return [(int(num), str(char)) for num, char in data]
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Binary runner for Obvious-binary files")
     parser.add_argument("target", help="Specify Obvious-binary target")
+    parser.add_argument("--input", type=parse_yaml_input, default=[], help="Specify Obvious-binary input")
     parser.add_argument("-v", "--verbose", action="store_true", help="Enable trace logging")
 
     # TODO Realizr memory snapshot
@@ -65,4 +70,4 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    run(args.target, args.verbose)
+    run(args.target, args.input, args.verbose)

@@ -3,7 +3,7 @@ in_source: |-
       echo(idata)
   }
 in_stdin: |-
-  [[90, "h"], [120, "e"], [125, "l"], [129, "l"], [140, "o"]]
+  [[1, "h"], [2, "e"], [3, "l"], [4, "l"], [5, "o"]]
 out_code_bin: !!binary |
   ARAAAQkAAAAXAAACAAH///8fFAAAAgABAAAAAQEBAQAAAAEVAAABAQH///8fFgAAEwAA
 out_code_hex: |
@@ -21,8 +21,15 @@ out_stdout: |
   LoC: 2
   Instructions: 10
   ============================================================
-  Total ticks: 3
+  Total ticks: 93
 out_log: |-
-  TICK:        1 | Command: Opcode.JMP    | PC:    1 | CR: 0x80000009      ACC: 0x0        | DR: 0x0        | AR: 0x0        FLAGS: (False, True)
-  TICK:        3 | Command: Opcode.HALT   | PC:   10 | CR: 0x98000000      ACC: 0x0        | DR: 0x0        | AR: 0x0        FLAGS: (False, True)
+  TICK(I):       77 | Command: Opcode.ST     | PC:    3 | CR: 0x11ffffff      ACC: 0x0        | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, True)
+  TICK(I):       79 | Command: Opcode.IN     | PC:    4 | CR: 0xa0000000      ACC: 0x0        | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, True)
+  TICK(I):       81 | Command: Opcode.ST     | PC:    5 | CR: 0x11000000      ACC: 0x6f       | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, True)
+  TICK(I):       84 | Command: Opcode.LD     | PC:    6 | CR: 0xb000000       ACC: 0x6f       | DR: 0x6f       | AR: 0x1000000  FLAGS: (False, True)
+  TICK(I):       86 | Command: Opcode.OUT    | PC:    7 | CR: 0xa8000000      ACC: 0x6f       | DR: 0x6f       | AR: 0x1000000  FLAGS: (False, False)
+  TICK(I):       89 | Command: Opcode.LD     | PC:    8 | CR: 0xbffffff       ACC: 0x6f       | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, False)
+  TICK(I):       91 | Command: Opcode.IRET   | PC:    9 | CR: 0xb0000000      ACC: 0x0        | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, True)
+  TICK:       93 | Command: Opcode.HALT   | PC:   10 | CR: 0x98000000      ACC: 0x0        | DR: 0x0        | AR: 0x1ffffff  FLAGS: (False, True)
   Output format (TICK, DECODED TO INT OUT)
+  14 0x68, 32 0x65, 50 0x6c, 68 0x6c, 86 0x6f

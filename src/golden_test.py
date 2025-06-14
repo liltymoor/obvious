@@ -59,8 +59,7 @@ def test_translator_and_machine(golden, caplog):
         with contextlib.redirect_stdout(io.StringIO()) as stdout:
             builder.build(source, target)
             print("============================================================")
-            runner.run(target + ".bin", verbose=True, input_stream=input_stream)
-
+            runner.run(target + ".bin", input_stream, verbose=True)
         with open(target + ".bin", "rb") as file:
             code_bin = file.read()
         with open(target_hex, encoding="utf-8") as file:
@@ -71,4 +70,4 @@ def test_translator_and_machine(golden, caplog):
         assert code_bin == golden.out["out_code_bin"]
         assert code_hex == golden.out["out_code_hex"]
         assert stdout.getvalue() == golden.out["out_stdout"]
-        assert get_last_n_lines(journal_text, 20) == golden.out["out_log"]
+        assert get_last_n_lines(journal_text, 10) == golden.out["out_log"]

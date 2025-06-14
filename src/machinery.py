@@ -200,7 +200,7 @@ class ControlUnit:
         self.trace: list[str] = []
 
     def pass_output(self):
-        self.output.append((self.tick, int(self.dp.output)))
+        self.output.append(f"{self.tick} {hex(self.dp.output)}")
 
     def instr_fetch(self) -> tuple[Opcode, int]:
         self.dp.latch_cr(MUX.RAM_R_FROM_PC)  # CR = RAM[PC]
@@ -361,7 +361,7 @@ class ControlUnit:
             f" FLAGS: {self.dp.alu.get_flags()!s:4}"
         )
 
-    def memory_snapshot(self, addr: int, snap_sz: int, decode: str = "ascii") -> str:
+    def memory_snapshot(self, addr: int, snap_sz: int, decode: str = "hex") -> str:
         return self.dp.snapshot_mem(addr, decode=decode, snap_size=snap_sz)
 
     def get_output(self):
