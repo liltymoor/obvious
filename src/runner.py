@@ -45,7 +45,7 @@ def run(target: str, input_stream: list[tuple[int, str]], verbose: bool = False)
                 for trace in cu.trace:
                     journal.write(f"{trace}\n")
                 journal.write("Output format (TICK, DECODED TO INT OUT)\n")
-                journal.write(",".join(cu.get_output()))
+                journal.write(", ".join(cu.get_output()))
         print("Total ticks:", cu.tick)
 
 
