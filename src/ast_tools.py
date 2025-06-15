@@ -397,7 +397,7 @@ class AstEcho(AstExpr):
 
 class AstStrCat(AstEchoable):
     # total_size is the result buffer size (with null-term included)
-    def __init__(self, dest: AstExpr, src: AstExpr, total_size: AstExpr) -> None:
+    def __init__(self, dest: AstExpr, src: AstExpr) -> None:
         if dest.get_expr_type() != AstExprType.STRING:
             # TODO Throw error here ( expected string, got smthng instead )
             return
@@ -406,12 +406,8 @@ class AstStrCat(AstEchoable):
             return
         if src.get_expr_type() != AstExprType.STRING:
             return
-        if not isinstance(total_size, AstLitNumber):
-            # TODO Throw error here (expected size specified by num literal)
-            return
         self.dest = dest
         self.src = src
-        self.size = total_size
 
     def __str__(self) -> str:
         return "strcat(" + str(self.dest) + ", " + str(self.src) + ")"
@@ -423,98 +419,169 @@ class AstStrCat(AstEchoable):
         instructions = list()
 
         instructions += self.dest.translate(translator)
-        # we have dest_head in acc
-        tmp_dest_iterator = translator.allocate_for_tmp_expr()
-        instructions.append(Instruction(Opcode.ST, tmp_dest_iterator, ArgType.IMMEDIATE))
 
-        catted_ptr_head = translator.allocate_memory(self.size.value)
-        tmp_catted_ptr = translator.allocate_for_tmp_expr()
-        instructions += init(tmp_catted_ptr, ArgType.IMMEDIATE, catted_ptr_head)
+        tmp_dest_ptr = translator.allocate_for_tmp_expr()
+        tmp_append_ptr = translator.allocate_for_tmp_expr()
+        tmp_size_left_ptr = translator.allocate_for_tmp_expr()
 
-        tmp_dest_length = translator.allocate_for_tmp_expr()
-        tmp_src_length = translator.allocate_for_tmp_expr()
-        tmp_total_length = translator.allocate_for_tmp_expr()
+        instructions.append(Instruction(Opcode.ST, tmp_dest_ptr, ArgType.IMMEDIATE))
 
-        instructions.append(Instruction(Opcode.LD, tmp_dest_iterator, ArgType.INDIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_dest_length, ArgType.IMMEDIATE))
-        instructions.append(Instruction(Opcode.ST, tmp_total_length, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, tmp_append_ptr, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.LD, tmp_dest_ptr, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_size_left_ptr, ArgType.IMMEDIATE))
 
-        tmp_src_iterator = translator.allocate_for_tmp_expr()
-        instructions += self.src.translate(translator)
-        instructions.append(Instruction(Opcode.ST, tmp_src_iterator, ArgType.IMMEDIATE))
+        # seek for empty space in dest
+        seek_mark = BranchMark()
+        end_mark = BranchMark()
+        no_empty_mark = BranchMark()
+        instructions.append(seek_mark)
 
-        instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_src_length, ArgType.IMMEDIATE))
-
-        instructions.append(Instruction(Opcode.ADD, tmp_total_length, ArgType.DIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_total_length, ArgType.IMMEDIATE))
-
-        check_overflow_mark = BranchMark()
-        continue_concat_mark = BranchMark()
-
-        instructions.append(Instruction(Opcode.CMP, self.size.value - 1, ArgType.IMMEDIATE))
         instructions.append(Instruction(Opcode.SETG, None, ArgType.IMMEDIATE))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JNZ, None, ArgType.IMMEDIATE), check_overflow_mark))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), continue_concat_mark))
+        instructions.append(Instruction(Opcode.SETG, None, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.SETG, None, ArgType.IMMEDIATE))
 
-        instructions.append(check_overflow_mark)
+        instructions.append(Instruction(Opcode.LD, tmp_append_ptr, ArgType.INDIRECT))
+        # empty spcae found
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), end_mark))
+        instructions.append(Instruction(Opcode.LD, tmp_size_left_ptr, ArgType.DIRECT))
+        # no empty space
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), no_empty_mark))
+        instructions += inc(tmp_append_ptr, ArgType.DIRECT)
+        instructions += dec(tmp_size_left_ptr, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), seek_mark))
+        instructions.append(end_mark)
 
-        instructions += init(tmp_total_length, ArgType.IMMEDIATE, self.size.value - 1)
+        # empty space found - copying till the end
+        instructions += self.src.translate(translator)
+        tmp_src = translator.allocate_for_tmp_expr()
+        tmp_src_iterator = translator.allocate_for_tmp_expr()
+        tmp_src_size_left_ptr = translator.allocate_for_tmp_expr()
 
-        instructions.append(continue_concat_mark)
+        instructions.append(Instruction(Opcode.ST, tmp_src, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ADD, 1, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, tmp_src_iterator, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.LD, tmp_src, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_src_size_left_ptr, ArgType.IMMEDIATE))
 
-        instructions.append(Instruction(Opcode.LD, tmp_total_length, ArgType.DIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
-        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
+        copy_mark = BranchMark()
+        end_copy_mark = BranchMark()
 
-        copy_dest_mark = BranchMark()
-        dest_done_mark = BranchMark()
+        instructions.append(copy_mark)
 
-        instructions += inc(tmp_dest_iterator, ArgType.DIRECT)
-
-        instructions.append(copy_dest_mark)
-        instructions.append(Instruction(Opcode.LD, tmp_dest_length, ArgType.DIRECT))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), dest_done_mark))
-
-        instructions.append(Instruction(Opcode.LD, tmp_dest_iterator, ArgType.INDIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
-
-        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
-        instructions += inc(tmp_dest_iterator, ArgType.DIRECT)
-        instructions += dec(tmp_dest_length, ArgType.DIRECT)
-        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copy_dest_mark))
-
-        instructions.append(dest_done_mark)
-
-        copy_src_mark = BranchMark()
-        src_done_mark = BranchMark()
-
-        instructions += inc(tmp_src_iterator, ArgType.DIRECT)
-
-        instructions.append(copy_src_mark)
-        instructions.append(Instruction(Opcode.LD, tmp_src_length, ArgType.DIRECT))
-        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), src_done_mark))
+        instructions.append(Instruction(Opcode.SETE, None, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.SETE, None, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.SETE, None, ArgType.IMMEDIATE))
 
         instructions.append(Instruction(Opcode.LD, tmp_src_iterator, ArgType.INDIRECT))
-        instructions.append(Instruction(Opcode.ST, tmp_catted_ptr, ArgType.DIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), end_copy_mark))
+        # saved char to dest
+        instructions.append(Instruction(Opcode.ST, tmp_append_ptr, ArgType.DIRECT))
+        # no empty space left
+        instructions += dec(tmp_size_left_ptr, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), no_empty_mark))
+        # no symbols to copy
+        instructions += dec(tmp_src_size_left_ptr, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), end_copy_mark))
+        instructions += inc(tmp_append_ptr, ArgType.DIRECT)
 
-        instructions += inc(tmp_catted_ptr, ArgType.DIRECT)
-        instructions += inc(tmp_src_iterator, ArgType.DIRECT)
-        instructions += dec(tmp_src_length, ArgType.DIRECT)
-        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copy_src_mark))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copy_mark))
 
-        instructions.append(src_done_mark)
+        instructions.append(end_copy_mark)
+        instructions.append(no_empty_mark)
+        instructions.append(Instruction(Opcode.LD, tmp_dest_ptr, ArgType.DIRECT))
 
-        instructions.append(Instruction(Opcode.LD, catted_ptr_head, ArgType.IMMEDIATE))
-
-        translator.free_tmp_expr(tmp_dest_iterator)
+        translator.free_tmp_expr(tmp_src)
         translator.free_tmp_expr(tmp_src_iterator)
-        translator.free_tmp_expr(tmp_catted_ptr)
-        translator.free_tmp_expr(tmp_dest_length)
-        translator.free_tmp_expr(tmp_src_length)
-        translator.free_tmp_expr(tmp_total_length)
+        translator.free_tmp_expr(tmp_src_size_left_ptr)
+        translator.free_tmp_expr(tmp_append_ptr)
+        translator.free_tmp_expr(tmp_dest_ptr)
+        translator.free_tmp_expr(tmp_size_left_ptr)
 
         return instructions
+
+class AstToString(AstExpr):
+    def __init__(self, expr: AstExpr) -> None:
+        self.to_string = expr
+
+    def __str__(self) -> str:
+        return "to_string(" + str(self.to_string) + ")"
+
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions = list()
+
+        instructions += self.to_string.translate(translator)
+
+        pascal_string_ptr = translator.allocate_memory(2)
+        print(hex(pascal_string_ptr))
+        instructions.append(Instruction(Opcode.ST, pascal_string_ptr + 1, ArgType.IMMEDIATE))
+        instructions += init(pascal_string_ptr, ArgType.IMMEDIATE, 1)
+        instructions.append(Instruction(Opcode.LD, pascal_string_ptr, ArgType.IMMEDIATE))
+
+        return instructions
+
+    def get_expr_type(self) -> AstExprType:
+        return AstExprType.STRING
+
+
+class AstCreateString(AstExpr):
+    def __init__(self, expr: AstExpr, size: int) -> None:
+        self.expr = expr
+        self.size = size
+
+    def __str__(self) -> str:
+        return "create_string(" + str(self.expr) + ", " + str(self.size) + ")"
+
+    def translate(self, translator: Translator) -> list[Instruction | BranchMark | MarkedInstruction]:
+        instructions = list()
+
+        instructions += self.expr.translate(translator)
+        pascal_str_ptr = translator.allocate_memory(self.size + 1)
+        tmp_iterator = translator.allocate_for_tmp_expr()
+        tmp_pascal_iterator = translator.allocate_for_tmp_expr()
+        tmp_size = translator.allocate_for_tmp_expr()
+
+        instructions.append(Instruction(Opcode.ST, tmp_iterator, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.SUB, 1, ArgType.IMMEDIATE))
+        instructions.append(Instruction(Opcode.ST, tmp_size, ArgType.IMMEDIATE))
+
+        instructions += init(tmp_pascal_iterator, ArgType.IMMEDIATE, pascal_str_ptr)
+
+        instructions += init(pascal_str_ptr, ArgType.IMMEDIATE, self.size)
+        instructions += inc(tmp_iterator, ArgType.DIRECT)
+        instructions += inc(tmp_pascal_iterator, ArgType.DIRECT)
+
+        copying_mark = BranchMark()
+        exit_mark = BranchMark()
+
+        instructions.append(copying_mark)
+
+        instructions.append(Instruction(Opcode.LD, tmp_iterator, ArgType.INDIRECT))
+        instructions.append(Instruction(Opcode.ST, tmp_pascal_iterator, ArgType.DIRECT))
+
+        instructions.append(Instruction(Opcode.LD, tmp_size, ArgType.DIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE), exit_mark))
+        instructions.append(Instruction(Opcode.CMP, pascal_str_ptr, ArgType.DIRECT))
+        instructions.append(MarkedInstruction(Instruction(Opcode.JZ, None, ArgType.IMMEDIATE),exit_mark))
+
+        instructions += dec(tmp_size, ArgType.DIRECT)
+        instructions += inc(tmp_pascal_iterator, ArgType.DIRECT)
+        instructions += inc(tmp_iterator, ArgType.DIRECT)
+        instructions.append(MarkedInstruction(Instruction(Opcode.JMP, None, ArgType.IMMEDIATE), copying_mark))
+
+        instructions.append(exit_mark)
+
+        instructions.append(Instruction(Opcode.LD, pascal_str_ptr, ArgType.IMMEDIATE))
+
+        translator.free_tmp_expr(tmp_iterator)
+        translator.free_tmp_expr(tmp_pascal_iterator)
+        translator.free_tmp_expr(tmp_size)
+
+        return instructions
+
+    def get_expr_type(self) -> AstExprType:
+        return AstExprType.STRING
 
 
 # ===-------------------------------------------
@@ -555,6 +622,8 @@ class AstBuilder:
             TokenType.NUM_LIT: self.parse_number_lit,
             TokenType.STR_LIT: self.parse_string_lit,
             TokenType.STRCAT: self.parse_strcat,
+            TokenType.TO_STRING: self.parse_tostring,
+            TokenType.CREATE_STR: self.parse_createstring
         }
         self.handle2handler = {
             TokenType.VAR_LIT: self.handle_decl,
@@ -563,6 +632,8 @@ class AstBuilder:
             TokenType.INTERRUPT: self.handle_interrupt,
             TokenType.ECHO: self.handle_echo,
             TokenType.STRCAT: self.handle_strcat,
+            TokenType.TO_STRING: self.handle_tostring,
+            TokenType.CREATE_STR: self.handle_createstring,
         }
         self.bin_op_rank = {
             TokenType.LT: 10,
@@ -731,10 +802,32 @@ class AstBuilder:
 
     def parse_strcat(self) -> AstStrCat:
         self.next_token()
-        dest, src, size = self.parse_paren_lit()
+        dest, src = self.parse_paren_lit()
         if not isinstance(dest, AstVar) and dest.get_expr_type() is not AstExprType.STRING:
             raise AstExpectedTokenError(self.tokenizer, dest.get_expr_type(), src.get_expr_type())
-        return AstStrCat(dest, src, size)
+        return AstStrCat(dest, src)
+
+    def parse_tostring(self):
+        self.next_token() # TO_STRING -> (
+        expr = self.parse_paren_lit()[0]
+        if expr.get_expr_type() is not AstExprType.CHAR:
+            raise AstExpectedTokenError(self.tokenizer, expected=AstExprType.CHAR, actual=expr.get_expr_type())
+        return AstToString(expr)
+
+    def parse_createstring(self):
+        self.next_token() # CREATE_STRING -> (
+        expr, size = self.parse_paren_lit()
+        if expr.get_expr_type() is not AstExprType.STRING:
+            raise AstExpectedTokenError(self.tokenizer, expr.get_expr_type(), AstExprType.STRING)
+
+        if size.get_expr_type() is not AstExprType.NUM:
+            raise AstExpectedTokenError(self.tokenizer, size.get_expr_type(), AstExprType.NUM)
+
+        if not isinstance(size, AstLitNumber):
+            raise AstExpectedTokenError(self.tokenizer, size.get_expr_type(), AstLitNumber.__class__.__name__)
+
+        return AstCreateString(expr, size.value)
+
 
     # ===-------------------------------------------
     # Handlers
@@ -770,6 +863,12 @@ class AstBuilder:
 
     def handle_strcat(self) -> AstStrCat:
         return self.parse_strcat()
+
+    def handle_tostring(self) -> AstToString:
+        return self.parse_tostring()
+
+    def handle_createstring(self) -> AstCreateString:
+        return self.handle_createstring()
 
     # ===-------------------------------------------
     # Builder

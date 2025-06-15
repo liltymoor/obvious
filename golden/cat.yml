@@ -7,14 +7,14 @@ in_stdin: |-
 out_code_bin: !!binary |
   ARAAAQkAAAAXAAACAAH///8fFAAAAgABAAAAAQEBAQAAAAEVAAABAQH///8fFgAAEwAA
 out_code_hex: |
-  0x0  - 0x80000009  - JMP   0x24       | [IMMEDIATE]
+  0x0  - 0x80000009  - JMP   0x9        | [IMMEDIATE]
   0x4  - 0xb8000000  - ILOCK            | [IMMEDIATE]
-  0x8  - 0x11ffffff  - ST    0x7ffffffc | [IMMEDIATE]
+  0x8  - 0x11ffffff  - ST    0x1fffffff | [IMMEDIATE]
   0xc  - 0xa0000000  - IN               | [IMMEDIATE]
-  0x10 - 0x11000000  - ST    0x4000000  | [IMMEDIATE]
-  0x14 - 0xb000000   - LD    0x4000000  | [DIRECT]
+  0x10 - 0x11000000  - ST    0x1000000  | [IMMEDIATE]
+  0x14 - 0xb000000   - LD    0x1000000  | [DIRECT]
   0x18 - 0xa8000000  - OUT              | [IMMEDIATE]
-  0x1c - 0xbffffff   - LD    0x7ffffffc | [DIRECT]
+  0x1c - 0xbffffff   - LD    0x1fffffff | [DIRECT]
   0x20 - 0xb0000000  - IRET             | [IMMEDIATE]
   0x24 - 0x98000000  - HALT             | [IMMEDIATE]
 out_stdout: |

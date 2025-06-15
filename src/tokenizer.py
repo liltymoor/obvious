@@ -71,6 +71,9 @@ class TokenType(enum.Enum):
     ECHO = ("echo",)
     STRCAT = ("strcat",)
 
+    TO_STRING = ("to_string",)
+    CREATE_STR = ("create_str",)
+
     INTERRUPT = ("interrupt",)
 
     L_BRACE = ("{",)

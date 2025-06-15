@@ -45,7 +45,7 @@ def build(src=type[str], target=type[str]):
         with open(target + ".hex", "w") as target_hex:
             for k, v in enumerate(code):
                 target_hex.write(
-                    f"{hex(k * 4):4} - {hex(v.get_coded()):11} - {v.opcode.name:5} {hex(v.arg * 4) if v.arg is not None else '':10} | [{v.arg_type.name}]\n"
+                    f"{hex(k * 4):4} - {hex(v.get_coded()):11} - {v.opcode.name:5} {hex(v.arg) if v.arg is not None else '':10} | [{v.arg_type.name}]\n"
                 )
 
         with open(target + ".base64", "w") as f:
