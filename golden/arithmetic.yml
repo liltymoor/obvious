@@ -1,0 +1,110 @@
+in_source: |-
+  first_high_part = 100
+  first_low_part = 33000000
+
+  second_high_part = 0
+  second_low_part = 33554431
+
+  result_high_part = 0
+  result_low_part = 0
+
+  temp_result_low = first_low_part - second_low_part
+
+  if (temp_result_low < 0) {
+      max_32bit = 33554431 * 128 + 127
+
+      result_low_part = first_low_part - second_low_part
+      result_low_part = result_low_part + max_32bit
+
+      result_high_part = first_high_part - 1 - second_high_part
+      
+  }
+  if (temp_result_low > 0) {
+      result_low_part = temp_result_low
+      result_high_part = first_high_part - second_high_part
+  }
+
+  echo(result_high_part)
+  echo(result_low_part)
+in_stdin: |-
+  []
+out_log: |-
+  TICK:       99 | Command: Opcode.CMP    | PC:   43 | CR: 0x6300000b      ACC: -0x875bf   | DR: 0x0        | AR: 0x100000b  FLAGS: (True, False)
+  TICK:      101 | Command: Opcode.SETG   | PC:   44 | CR: 0x68000000      ACC: -0x875bf   | DR: 0x0        | AR: 0x100000b  FLAGS: (True, False)
+  TICK:      103 | Command: Opcode.JZ     | PC:   45 | CR: 0x88000032      ACC: 0x0        | DR: 0x0        | AR: 0x100000b  FLAGS: (False, True)
+  TICK:      106 | Command: Opcode.LD     | PC:   51 | CR: 0xb000004       ACC: 0x0        | DR: 0x63       | AR: 0x1000004  FLAGS: (False, True)
+  TICK:      108 | Command: Opcode.OUT    | PC:   52 | CR: 0xa8000000      ACC: 0x63       | DR: 0x63       | AR: 0x1000004  FLAGS: (False, False)
+  TICK:      111 | Command: Opcode.LD     | PC:   53 | CR: 0xb000005       ACC: 0x63       | DR: 0xfff78a40 | AR: 0x1000005  FLAGS: (False, False)
+  TICK:      113 | Command: Opcode.OUT    | PC:   54 | CR: 0xa8000000      ACC: 0xfff78a40 | DR: 0xfff78a40 | AR: 0x1000005  FLAGS: (False, False)
+  TICK:      115 | Command: Opcode.HALT   | PC:   55 | CR: 0x98000000      ACC: 0xfff78a40 | DR: 0xfff78a40 | AR: 0x1000005  FLAGS: (False, False)
+  Output format (TICK, DECODED TO INT OUT)
+  108 0x63, 113 0xfff78a40
+out_stdout: |
+  LoC: 26
+  Instructions: 55
+  ============================================================
+  Total ticks: 115
+out_code_hex: |
+  0x0  - 0x8000064   - LD    0x64       | [IMMEDIATE]
+  0x4  - 0x11000000  - ST    0x1000000  | [IMMEDIATE]
+  0x8  - 0x9f78a40   - LD    0x1f78a40  | [IMMEDIATE]
+  0xc  - 0x11000001  - ST    0x1000001  | [IMMEDIATE]
+  0x10 - 0x8000000   - LD    0x0        | [IMMEDIATE]
+  0x14 - 0x11000002  - ST    0x1000002  | [IMMEDIATE]
+  0x18 - 0x9ffffff   - LD    0x1ffffff  | [IMMEDIATE]
+  0x1c - 0x11000003  - ST    0x1000003  | [IMMEDIATE]
+  0x20 - 0x8000000   - LD    0x0        | [IMMEDIATE]
+  0x24 - 0x11000004  - ST    0x1000004  | [IMMEDIATE]
+  0x28 - 0x8000000   - LD    0x0        | [IMMEDIATE]
+  0x2c - 0x11000005  - ST    0x1000005  | [IMMEDIATE]
+  0x30 - 0xb000001   - LD    0x1000001  | [DIRECT]
+  0x34 - 0x23000003  - SUB   0x1000003  | [DIRECT]
+  0x38 - 0x11000006  - ST    0x1000006  | [IMMEDIATE]
+  0x3c - 0x8000000   - LD    0x0        | [IMMEDIATE]
+  0x40 - 0x11000007  - ST    0x1000007  | [IMMEDIATE]
+  0x44 - 0xb000006   - LD    0x1000006  | [DIRECT]
+  0x48 - 0x63000007  - CMP   0x1000007  | [DIRECT]
+  0x4c - 0x7a000000  - SETL             | [DIRECT]
+  0x50 - 0x88000027  - JZ    0x27       | [IMMEDIATE]
+  0x54 - 0x800007f   - LD    0x7f       | [IMMEDIATE]
+  0x58 - 0x11000008  - ST    0x1000008  | [IMMEDIATE]
+  0x5c - 0x9ffffff   - LD    0x1ffffff  | [IMMEDIATE]
+  0x60 - 0x28000080  - MUL   0x80       | [IMMEDIATE]
+  0x64 - 0x1b000008  - ADD   0x1000008  | [DIRECT]
+  0x68 - 0x11000009  - ST    0x1000009  | [IMMEDIATE]
+  0x6c - 0xb000001   - LD    0x1000001  | [DIRECT]
+  0x70 - 0x23000003  - SUB   0x1000003  | [DIRECT]
+  0x74 - 0x11000005  - ST    0x1000005  | [IMMEDIATE]
+  0x78 - 0xb000005   - LD    0x1000005  | [DIRECT]
+  0x7c - 0x1b000009  - ADD   0x1000009  | [DIRECT]
+  0x80 - 0x11000005  - ST    0x1000005  | [IMMEDIATE]
+  0x84 - 0x8000001   - LD    0x1        | [IMMEDIATE]
+  0x88 - 0x1100000a  - ST    0x100000a  | [IMMEDIATE]
+  0x8c - 0xb000000   - LD    0x1000000  | [DIRECT]
+  0x90 - 0x2300000a  - SUB   0x100000a  | [DIRECT]
+  0x94 - 0x23000002  - SUB   0x1000002  | [DIRECT]
+  0x98 - 0x11000004  - ST    0x1000004  | [IMMEDIATE]
+  0x9c - 0x8000000   - LD    0x0        | [IMMEDIATE]
+  0xa0 - 0x1100000b  - ST    0x100000b  | [IMMEDIATE]
+  0xa4 - 0xb000006   - LD    0x1000006  | [DIRECT]
+  0xa8 - 0x6300000b  - CMP   0x100000b  | [DIRECT]
+  0xac - 0x6a000000  - SETG             | [DIRECT]
+  0xb0 - 0x88000032  - JZ    0x32       | [IMMEDIATE]
+  0xb4 - 0xb000006   - LD    0x1000006  | [DIRECT]
+  0xb8 - 0x11000005  - ST    0x1000005  | [IMMEDIATE]
+  0xbc - 0xb000000   - LD    0x1000000  | [DIRECT]
+  0xc0 - 0x23000002  - SUB   0x1000002  | [DIRECT]
+  0xc4 - 0x11000004  - ST    0x1000004  | [IMMEDIATE]
+  0xc8 - 0xb000004   - LD    0x1000004  | [DIRECT]
+  0xcc - 0xa8000000  - OUT              | [IMMEDIATE]
+  0xd0 - 0xb000005   - LD    0x1000005  | [DIRECT]
+  0xd4 - 0xa8000000  - OUT              | [IMMEDIATE]
+  0xd8 - 0x98000000  - HALT             | [IMMEDIATE]
+out_code_bin: !!binary |
+  AAEAAWQAAAACAAEAAAABAQABQIr3AQIAAQEAAAEBAAEAAAAAAgABAgAAAQEAAf///wECAAEDAAAB
+  AQABAAAAAAIAAQQAAAEBAAEAAAAAAgABBQAAAQEBAQEAAAEEAQEDAAABAgABBgAAAQEAAQAAAAAC
+  AAEHAAABAQEBBgAAAQwBAQcAAAEPAQARAAEnAAAAAQABfwAAAAIAAQgAAAEBAAH///8BBQABgAAA
+  AAMBAQgAAAECAAEJAAABAQEBAQAAAQQBAQMAAAECAAEFAAABAQEBBQAAAQMBAQkAAAECAAEFAAAB
+  AQABAQAAAAIAAQoAAAEBAQEAAAABBAEBCgAAAQQBAQIAAAECAAEEAAABAQABAAAAAAIAAQsAAAEB
+  AQEGAAABDAEBCwAAAQ0BABEAATIAAAABAQEGAAABAgABBQAAAQEBAQAAAAEEAQECAAABAgABBAAA
+  AQEBAQQAAAEVAAABAQEFAAABFQAAEwAA
