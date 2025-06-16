@@ -1,45 +1,251 @@
 # Obvious
 
-## Contents
+## Выполнил: Чельтер Тимур Владимирович, группа P3217, ИСУ: 413105 <a name = "title"></a>
 
-- [Description](#description)
-- [Structure](#structure)
-- [Usage](#usage)
-- [Input Output](#inputoutput-structure)
+    alg | acc | neum | hw | tick | binary | trap | port | pstr | prob1 | pipeline
 
-## Description <a name = "description"></a>
+## Язык программирования <a name = "programming language"></a>
+### Синтаксис
 
-**Obvious** - project that realizes programming language [**Obvious**](#obvious) and it's way to the **Obvious-CU**.
+    program ::= %empty | statement | statement program
 
-## Structure <a name = "structure"></a>
-TODO Describe a project structure
-### Features
+    statement ::= output_stmt | decl_stmt | if_stmt | while_stmt | strcat_stmt | tostring_stmt | createstring_stmt | interrupt_stmt
 
-- **Programming Lagnuage [[alg](empty)]** >> Syntax is **Javascript** based.
-- **Architecture [[acc](empty)]** >> Architecture is **accumulator** based.
-- **Memory Architecture [[neum](empty)]** >> Memory architecture is von-Neumann based.
-- **Control Unit [[hw](empty)]** >> Control unit is **hardwired**.
-- **Model accuracy [[tick](empty)]** >> [Obvious-processor](#obvious) model is **tick-based**.
-- **Machine code [[binary](empty)]** >> [Obvious-translator](#obvious) translates code to **binary** machine code.
-- **IO [[trap](empty)]** >> [Input/Output](#inputoutput-structure) is token-based and done with interruption to main life-cycle.
-- **IO ISA [[port](empty)]** >> Special intructions are done to use IO.
-- **String support [[pstr]](empty)** >> Strings are presented like **Pascal-string**.
+    literal ::= NUM_LIT | STR_LIT | VAR_LIT
+    expr ::= literal |
+            input_expr |
+            "!" expr |
+            "-" expr |
+            expr "*" expr |
+            expr "/" expr |
+            expr "%" expr |
+            expr "+" expr |
+            expr "-" expr |
+            expr "!=" expr |
+            expr "==" expr |
+            expr "<" expr |
+            expr ">" expr |
+            expr "|" expr |
+            expr "&" expr |
+            "(" expr ")"
 
-- ... TBD
 
-## Usage <a name = "usage"></a>
+    output_stmt ::= "echo" "(" expr ")"
+    decl_stmt ::= VAR_LIT "=" expr
+    if_stmt ::= "if" "(" expr ")" "{" program "}"
+    while_stmt ::= "while" "(" expr ")" "{" program "}"
+    interrupt_stmt ::= "interrupt" "(" VAR_LIT ")" "{" program "}"
+    strcat_stmt ::= "strcat" "(" VAR_LIT "," VAR_LIT | STR_LIT ")"
+    tostring_stmt ::= "to_string" "(" VAR_LIT ")"
+    createstring_stmt ::= "createstring" "(" STR_LIT "," NUM_LIT ")"
 
-*TBD*
+### Семантика
 
-## Input/Output structure <a name = "io"></a>
+- Стратегия вычислений - временно выделенная память.
+- Инфиксная запись.
+- [expr] так же присваивает себе тип, согласно следующему алгоритму: каждый литерал, включенный в выражение, имеет свой тип, который присваивается при его объявлении. Для операторов есть свой список сигнатур в виде [lit_type, lit_type] -> op_type, так же существуют унарные операции.
+- Логика работы с [=]: реализованно подобие работы lvalue. lvalue это к чему можно присвоить, а rvalue это что имеет значение которое можно куда то присвоить.
+- Аккумулятор — основной механизм хранения, работы и передачи данных.
+- Сначала код полностью токенизируется, преобразуется в абстрактное синтаксическое дерево, где далее каждая нода такого дерева транслируется в машинный код. После этого остается подать полученный машинный код в симулятор.
+- Область видимости: все переменные и все функции доступны везде, с условием, что переменные и функции объявлены до исполняемого кода.
+- Типизация слабая.
+- Для работы со строками язык предусматривает несколько процедур.
 
-At the start of the model we have an input like 
+## Организация памяти <a name = "memory-structure"></a>
+### Модель памяти процессора: архитектура фон-Неймана
+### Разделы памяти:
+- Код обработки прерывания
+- Исполняемый код
+- Зарезервированная память для работы инструкций
+- Зарезервированная память для сохранения регистров при уходе в прерывание
+### Регистры:
+- PC - Program Counter. Регистр, указывающий на следующую инструкцию для исполнения. 32 бита
+- CR - Command Register. Регистр, хранит в себе инструкцию к исполнению. 32 бита
+- DR - Data Register. Хранит операнды. 32 байта
+- ACC - Accumulator. Основа аккумуляторной архитектуры.
+- AR - Address Register. Регистр для указания адреса выгрузки из памяти.
+- BR - Buffer Register. Хранит в себе последний PC при уходе в прерывание.
+- IN - Input. Является поставщиком данных из вне. Порт ввода.
+- OUT - Output. Порт вывода.
 
-```python
- [(1, 'h'), (2, 'e'), (3, 'l'), (4, 'l'), (5, 'o')] 
-```
+Размер машинного слова: 32 бита.
+- Реализовано 3 вида адресации:
 
-**Number** means the time-moment when input should be done and the **symbol** is the actual input we pass to main life-cycle.
+        [IMMEDIATE] --> arg == DATA , аргумент зашифроваш в команде
 
-TODO append the IO description.
+        [DIRECT] --> arg == RAM[DATA], аргумент находится по адресу из команды
 
+        [INDIRECT] --> arg == RAM[RAM[DATA]], аргумент находится по адресу, у которого ячейка памяти представляет собой адрес, где и лежит конечный аргумент
+- Реализована статическая память.
+- Реализована область памяти, которая автоматически выделяется компилятором под переменные и временные значения выражений. Эта память может быть переиспользована.
+- PMIO позволяет реализовать ввод-вывод через команды OUT и IN.
+- Если данные (строка) требуют больше, чем 1 машинное слова, они размещаются по порядку в двух и более ячейках.
+- Понятия константы не существует, любую переменную можно изменить. Каждому литералу (символу) отведена целая ячейка памяти в 32 бита.
+
+## Система команд
+
+### Особенности процессора
+
+- Работа с памятью осуществляется посредством регистра [ AR ].
+- Если в ходе работы встречается команда с адресацией DIRECT или INDIRECT - мы используем шину которая проведена от CR к AR (Шина проводит 25 бит, как раз те, что нужны для адресации).
+- [ BR ] Используется для сохранения состояния регистра PC.
+
+### Команды
+
+Команды перечислены в этом [файле](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/isa.py).
+
+Команды без аргумента:
+- IN
+- OUT
+- SETL
+- SETE
+- SETG
+- NOT
+- NEG
+- HALT
+- IRET
+- ILOCK
+
+Все остальные команды подразумевают аргумент в младших 25 битах.
+
+Для того, чтобы настроить переходы (JMP) были сделаны дополнительные 3 команды, которые меняют содержимое аккумулятора в зависимости от состояния флагов.
+
+Так используя три команды:
+-       SETL, SETG, SETE
+Можно выполнить базовые бранчи используя JZ или JNZ.
+
+Краткое описание работы команд:
+    LD — Загружает значение из памяти в аккумулятор.
+
+    ST — Сохраняет значение аккумулятора в память.
+
+    ADD — Складывает аккумулятор с операндом.
+
+    SUB — Вычитает операнд из аккумулятора.
+
+    MUL — Умножает аккумулятор на операнд.
+
+    DIV — Делит аккумулятор на операнд.
+
+    MOD — Вычисляет остаток от деления аккумулятора на операнд.
+
+    NEG — Инвертирует знак числа в аккумуляторе.
+
+    AND — Выполняет побитовое И между аккумулятором и операндом.
+
+    OR — Выполняет побитовое ИЛИ между аккумулятором и операндом.
+
+    NOT — Применяет побитовую инверсию к аккумулятору.
+
+    CMP — Сравнивает аккумулятор с операндом (устанавливает флаги).
+
+    SETG — Устанавливает аккумулятор в 1, если флаги N = 0 и Z = 0 (В обратном случае 0).
+
+    SETE — Устанавливает аккумулятор в 1, если флаги N = 0 и Z = 1 (В обратном случае 0).
+
+    SETL — Устанавливает аккумулятор в 1, если флаги N = 1 и Z = 0 (В обратном случае 0).
+
+    JMP — Переходит по указанному адресу (безусловный переход).
+
+    JZ — Переходит по адресу, если аккумулятор равен нулю.
+
+    JNZ — Переходит по адресу, если аккумулятор не равен нулю.
+
+    HALT — Останавливает выполнение программы.
+
+    IN — Считывает данные из устройства ввода в аккумулятор.
+
+    OUT — Отправляет данные из аккумулятора на устройство вывода.
+
+    IRET — Возвращает управление из обработчика прерывания.
+
+    ILOCK — Запрещает прерывания до следующего разрешения.
+
+### Кодирование инструкций
+
+Структура команды
+
+    Opcode - отвечает за номер исполняемой инструкции
+    Ссылка на номера инструкций приведена выше.
+
+    OpType - отвечает за тип адресации
+    - 0x0 - IMM
+    - 0x1 - DIRECT
+    - 0X2 - INDIRECT
+
+
+    +----------------------+----------------------+-------------------------------------------------+
+    | Opcode [31..27]      |   OpType [26..25]    |                          Operand[24..0]         |
+    +----------------------+----------------------+-------------------------------------------------+
+    |            00000     |                   00 |                       0000000000000000000000000 |
+    +----------------------+----------------------+-------------------------------------------------+
+
+
+## Транслятор
+
+Основная логика работы транслятора написана в файле [ast_tools.py](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/ast_tools.py).
+
+### Запуск работы транслятора
+Для работы транслятора был написан отдельный модуль [builder.py](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/builder.py), который позволяет получить из исходного кода .obv файла следующее:
+- *.base64 (бинарный файл в формате base64)
+- *.bin (бинарный файл)
+- *.hex
+
+Каждый из этих трех файлов является продуктом трансляции исходного кода.
+Пример использования билдера.
+    
+    - builder.py <source> <target>
+    builder.py ../examples/example.obv ../target/example
+
+### Особенности работы транслятора
+
+- Транслятор сначала анализирует исходный код, преобразуя его в список высказываний (statements), где каждое высказывание представляет собой узел AST с определенным количеством потомков. Затем происходит процесс трансляции путем вызова метода [translate()](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/ast_tools.py#L84) для каждого высказывания, где каждый узел вызывает тот же метод у своих дочерних элементов. При разделении на токены информация о номере строки, откуда они были извлечены, сохраняется в них. Метод translate() не един для всех высказываний. Для каждого "типа" узла есть свой метод.
+- Токены перечислены в [этом](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/tokenizer.py) файле. Токены могут быть заданы либо строкой, тогда функция генерируется автоматически, либо функцией, которая их парсит.
+- Парсер реализован по LL принципу. Он анализирует входные данные слева направо, выполняя левостороннюю выводную грамматику предложения. Он работает в основном цикле перебирая по контексту правила и применяя нужное на первое вхождение. Для определения "правильности правила" необходимо посмотреть на 1 токен. В итоге он преобразует код в токены, а токены в узлы.
+- В результате работы парсера появляются метки и помеченые строки. [BranchMark](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/isa.py#L130) - объект с одним элементом - номером стоки. Инструкция с меткой - буквально инструкция+метка. Это нужно для того, чтобы реализовать if и while. Логика работы с метками [тут](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/ast_tools.py#L588C3-L588C9)
+
+## Модель процессора
+Логика работы процессора написана в файле [machinery.py](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/machinery.py)
+
+### Запуск работы симулятора
+Для работы симулятора был написан отдельный модуль [runner.py](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/runner.py), который позволяет запустить симулятор загрузив в него результат трансляции (*.bin).
+
+Результатом работы **runner.py** является журнал ( journal.txt ), в который будет записан лог симуляции с потактовым результатом вывода.
+
+    - runner.py <source>
+    runner.py ../target/example.bin
+
+    У данного модуля есть два необязательных аргумента
+
+    Добавляет в содержимое журнала необязательные отладочные данные (например трассировку).
+    - runner.py <source> --verbose
+
+    Добавляет на вход симулятора данные с точностью до 2 тиков.
+    - runner.py <source> --input "[[tick_num, char],[...], ..., [...]]"
+    runner.py ../target/example.bin --input "[[100, 'H'], [105, 'i'], [110, '!']]" 
+
+### DataPath
+[Реализация](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/machinery.py#L78)
+![DataPath](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/resources/control_unit.jpg)
+
+### ControlUnit
+[Реализация](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/machinery.py#L182)
+![ControlUnit](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/resources/datapath.jpg)
+Пояснение к сигналам:
+- latch_* - защелка значения
+- i_pass_to_out - вывод top() прерывания в IN регистр DataPath.
+- lock_switch - переключатель ilock для запретов прерывания
+- i_signal - битовый сигнал о top() стека прерываний
+
+### Прерывания
+Реализованы с помощью **IHandler**, который при получении данных сохраняет их в стек. top() выводится в IN регистр **DataPath** при поступлении сигнала *i_pass_to_out*. ControlUnit при получении прерывания сохраняет состояния **DataPath** и переставляет **PC** на вторую инструкцию (0x4). Под второй инструкцией всегда располагается обработчик прерывания, который продолжается до инструкции IRET.
+
+## Тестирование
+
+Тестирование было выполнено с использованием golden-тестов.
+- [hello](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/hello.yml)
+- [hello_user_name](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/hello_user_name.yml)
+- [arithmetic](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/arithmetic.yml)
+- [cat](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/cat.yml)
+- [max_pal](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/max_pal.yml)
+- [strcat](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/golden/strcat.yml)
