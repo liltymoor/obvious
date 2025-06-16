@@ -226,11 +226,11 @@
 
 ### DataPath
 [Реализация](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/machinery.py#L78)
-![DataPath](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/resources/control_unit.jpg)
+![DataPath](https://github.com/liltymoor/obvious/blob/60dda63709b38f1e359befb46c4bb2a6ac8bed7f/resources/datapath.jpg)
 
 ### ControlUnit
 [Реализация](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/src/machinery.py#L182)
-![ControlUnit](https://github.com/liltymoor/obvious/blob/e78f6cd7922b36ef9a8dbdcbbabec9cb19f0330c/resources/datapath.jpg)
+![ControlUnit](https://github.com/liltymoor/obvious/blob/60dda63709b38f1e359befb46c4bb2a6ac8bed7f/resources/control_unit.jpg)
 Пояснение к сигналам:
 - latch_* - защелка значения
 - i_pass_to_out - вывод top() прерывания в IN регистр DataPath.
