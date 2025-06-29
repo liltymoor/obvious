@@ -1,9 +1,5 @@
 # Obvious
 
-## Выполнил: Чельтер Тимур Владимирович, группа P3217, ИСУ: 413105 <a name = "title"></a>
-
-    alg | acc | neum | hw | tick | binary | trap | port | pstr | prob1 | pipeline
-
 ## Язык программирования <a name = "programming language"></a>
 ### Синтаксис
 
